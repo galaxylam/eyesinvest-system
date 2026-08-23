@@ -58,13 +58,18 @@ export function VolumeEfficiencyChart({
     return usable.reduce((s, p) => s + p.value, 0) / usable.length;
   }, [usable]);
 
-  const avg30 = data?.avgTurnoverPct30d != null && data?.turnoverPctToday != null
-    ? // 30D avg turnover ÷ today turnover gives an "average efficiency"
-      // comparison anchor; if turnover today is zero, fall back to 0.
-      data.avgTurnoverPct30d === 0
-        ? 0
-        : data.turnoverPctToday / data.avgTurnoverPct30d
-    : 0;
+  // 30D Avg = mean of turnoverPct over the last 30 days (independent of
+  // the visible picker window — the label is "30D", not "in window").
+  // Uses the per-day `turnoverPct` already on each EfficiencyPoint.
+  const avg30 = useMemo(() => {
+    if (!data) return null;
+    const last30 = data.series
+      .filter((p) => p.turnoverPct != null)
+      .slice(-30);
+    if (last30.length === 0) return null;
+    const sum = last30.reduce((s, p) => s + (p.turnoverPct as number), 0);
+    return sum / last30.length;
+  }, [data]);
 
   // Scope all stats to the visible picker window so the green/red bar
   // averages always reflect "this 1M / 3M / 6M / 1Y / 3Y slice" rather
@@ -147,25 +152,10 @@ export function VolumeEfficiencyChart({
       usable.map((p) => ({ time: p.time, value: mean })),
     );
 
-    // Dotted orange = current 30D average. Same shape (flat) so it shows
-    // up as a horizontal reference across the chart.
-    const avgLine = chart.addLineSeries({
-      color: '#fb923c',
-      lineWidth: 1,
-      lineStyle: 3, // Dotted (large dash)
-      priceLineVisible: false,
-      lastValueVisible: false,
-      priceScaleId: 'right',
-      crosshairMarkerVisible: false,
-    });
-    avg30Ref.current = avgLine;
-    if (avg30 > 0) {
-      avgLine.setData(
-        usable.map((p) => ({ time: p.time, value: avg30 })),
-      );
-    } else {
-      avgLine.setData([]);
-    }
+    // The 30D avg turnover is now shown only as a header pill (it lives on
+    // a different unit scale than the efficiency bars, so plotting it as
+    // a horizontal line on this axis would mislead). The dashed-blue
+    // mean-of-efficiency reference above is the only overlay.
 
     chart.timeScale().fitContent();
 
@@ -222,7 +212,7 @@ export function VolumeEfficiencyChart({
           <h3 className="text-sm font-semibold text-fg">Volume efficiency</h3>
         </div>
         <div className="flex items-baseline gap-4">
-          {avg30 > 0 && (
+          {avg30 != null && (
             <div className="flex items-baseline gap-1.5">
               <span className="inline-block h-2 w-2 rounded-sm bg-orange-400" aria-hidden />
               <span className="text-2xs text-fg-subtle">30D Avg</span>
