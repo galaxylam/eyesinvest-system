@@ -32,6 +32,10 @@ interface PriceChartProps {
    * bars (e.g. 21 for 1M, 252 for 1Y). All MA data is still rendered so MA200
    * stays meaningful within the visible window. When undefined the chart
    * fits all available data.
+   *
+   * After the initial render the user is free to pan/zoom freely; the
+   * sub-charts in `StockChartStack` are locked to this same value via
+   * the Range picker so they always re-sync when it changes.
    */
   visibleDays?: number;
 }

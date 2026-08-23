@@ -1,6 +1,13 @@
 import Link from 'next/link';
+import clsx from 'clsx';
 import { getLocale, getTranslations } from 'next-intl/server';
-import { formatMarketCap, formatPrice, formatSignedPercent, formatVolume } from '@/lib/format/quote';
+import {
+  formatMarketCap,
+  formatPrice,
+  formatRatio,
+  formatSignedPercent,
+  formatVolume,
+} from '@/lib/format/quote';
 import { SignedNumber } from '@/components/stocks/SignedNumber';
 import type {
   ScreenerRow,
@@ -29,7 +36,9 @@ interface ColumnSpec {
     | 'col.marketCap'
     | 'col.pe'
     | 'col.yield'
-    | 'col.return1m';
+    | 'col.return1m'
+    | 'col.efficiency'
+    | 'col.crowded';
   align?: 'left' | 'right';
 }
 
@@ -43,6 +52,8 @@ const COLUMNS: ColumnSpec[] = [
   { sortColumn: 'peRatio', labelKey: 'col.pe', align: 'right' },
   { sortColumn: 'dividendYield', labelKey: 'col.yield', align: 'right' },
   { sortColumn: 'return1m', labelKey: 'col.return1m', align: 'right' },
+  { sortColumn: null, labelKey: 'col.efficiency', align: 'right' },
+  { sortColumn: null, labelKey: 'col.crowded', align: 'right' },
 ];
 
 /**
@@ -190,6 +201,35 @@ function Row({
         <SignedNumber value={row.return1m} className="text-2xs">
           {row.return1m != null ? formatSignedPercent(row.return1m, locale) : '—'}
         </SignedNumber>
+      </td>
+      <td
+        className={clsx(
+          'px-3 py-2 text-right tabular font-mono text-2xs',
+          row.volumeEfficiencyToday == null
+            ? 'text-fg-subtle'
+            : row.volumeEfficiencyToday >= 2
+              ? 'text-emerald-500'
+              : row.volumeEfficiencyToday >= 1
+                ? 'text-fg'
+                : 'text-fg-muted',
+        )}
+      >
+        {formatRatio(row.volumeEfficiencyToday)}
+      </td>
+      <td
+        className={clsx(
+          'px-3 py-2 text-right tabular font-mono text-2xs',
+          (() => {
+            const r = row.crowdedRatio;
+            if (r == null) return 'text-fg-subtle';
+            if (r >= 1.5) return 'text-rose-500';
+            if (r >= 1.2) return 'text-amber-500';
+            if (r >= 0.8) return 'text-emerald-500';
+            return 'text-fg-muted';
+          })(),
+        )}
+      >
+        {formatRatio(row.crowdedRatio)}
       </td>
     </tr>
   );

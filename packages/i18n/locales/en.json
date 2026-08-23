@@ -105,6 +105,8 @@
       "peMax": "P/E max",
       "yield": "Dividend yield",
       "return1m": "1M return",
+      "volumeEfficiency": "Vol eff.",
+      "crowdedRatio": "Crowded",
       "all": "All",
       "us": "US",
       "hk": "HK",
@@ -113,6 +115,14 @@
       "cap50b": "≥ $50B",
       "cap100b": "≥ $100B",
       "cap500b": "≥ $500B",
+      "eff0_25": "≥ 0.25×",
+      "eff0_5": "≥ 0.5×",
+      "eff1": "≥ 1×",
+      "eff2": "≥ 2×",
+      "crowd1": "≥ 1.0×",
+      "crowd1_2": "≥ 1.2×",
+      "crowd1_5": "≥ 1.5×",
+      "crowd2": "≥ 2.0×",
       "reset": "Reset"
     },
     "col": {
@@ -124,7 +134,9 @@
       "marketCap": "Mkt cap",
       "pe": "P/E",
       "yield": "Yield",
-      "return1m": "1M"
+      "return1m": "1M",
+      "efficiency": "Eff",
+      "crowded": "Crowd"
     }
   },
   "stock": {

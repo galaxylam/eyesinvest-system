@@ -19,6 +19,8 @@ interface ScreenerPageProps {
     pe?: string;
     yield?: string;
     ret1m?: string;
+    eff?: string;
+    crowd?: string;
     sort?: string;
     dir?: string;
   }>;
@@ -53,6 +55,14 @@ function parseFilters(sp: Awaited<ScreenerPageProps['searchParams']>): ScreenerF
   if (sp.ret1m) {
     const n = Number(sp.ret1m);
     if (Number.isFinite(n)) f.return1mMin = n;
+  }
+  if (sp.eff) {
+    const n = Number(sp.eff);
+    if (Number.isFinite(n) && n >= 0) f.volumeEfficiencyMin = n;
+  }
+  if (sp.crowd) {
+    const n = Number(sp.crowd);
+    if (Number.isFinite(n) && n >= 0) f.crowdedRatioMin = n;
   }
   return f;
 }

@@ -26,9 +26,10 @@ interface StockTabsProps {
  * data tabs (Volume / Volatility / Relative Strength) and four "Coming soon"
  * tabs share a single visual rhythm via `<ComingSoonPanel>`.
  *
- * `defaultValue="overview"` keeps the chart + KeyStats + AnalyticsPanel
- * sections above (which are visible on every tab) feeling like the primary
- * surface.
+ * `defaultValue="volume"` makes the Volume tab — which carries the headline
+ * chart plus the Volume Efficiency + Crowded Ratio sub-graphs — the
+ * surface the user sees on first load. The chart + KeyStats +
+ * AnalyticsPanel sections above stay visible regardless of tab choice.
  */
 export async function StockTabs({
   symbol,
@@ -44,7 +45,7 @@ export async function StockTabs({
     <section className="rounded-md border border-border bg-bg-elevated p-5">
       <h2 className="text-sm font-semibold text-fg">{t('tabsTitle')}</h2>
 
-      <Tabs defaultValue="overview" className="mt-3">
+      <Tabs defaultValue="volume" className="mt-3">
         <div className="overflow-x-auto">
           <TabsList className="flex w-max min-w-full sm:w-auto">
             <TabsTrigger value="overview">{t('tab.overview')}</TabsTrigger>
@@ -69,7 +70,11 @@ export async function StockTabs({
         </TabsContent>
 
         <TabsContent value="volume">
-          <VolumePanel currency={currency} symbol={symbol} volume={volume} />
+          <VolumePanel
+            currency={currency}
+            symbol={symbol}
+            volume={volume}
+          />
         </TabsContent>
 
         <TabsContent value="volatility">

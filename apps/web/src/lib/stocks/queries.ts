@@ -14,6 +14,7 @@ import { createServerClient } from '@/lib/supabase/server';
 import {
   getAllMockStocks,
   getMockAnalytics,
+  getMockCrowdedRatio,
   getMockFundamentals,
   getMockIndexQuotes,
   getMockPriceSeries,
@@ -22,12 +23,17 @@ import {
   getMockScreenerRows,
   getMockStockDetail,
   getMockTopMoversWithChange,
+  getMockVolumeEfficiency,
   getMockVolumeSeries,
   getTopMockMovers,
   searchMockStocks,
   type MockMoverRow,
 } from './mock-data';
 import type {
+  CrowdedRatio,
+  CrowdedRatioPoint,
+  CrowdedRegime,
+  EfficiencyPoint,
   RelativeStrength,
   ScreenerFilters,
   ScreenerRow,
@@ -36,16 +42,22 @@ import type {
   StockDetail,
   StockSearchResult,
   VolumeAggregates,
+  VolumeEfficiency,
   VolumeSeries,
 } from './types';
 
 export type {
+  CrowdedRatio,
+  CrowdedRatioPoint,
+  CrowdedRegime,
+  EfficiencyPoint,
   RelativeStrength,
   ScreenerFilters,
   ScreenerRow,
   ScreenerSort,
   ScreenerSortColumn,
   VolumeAggregates,
+  VolumeEfficiency,
   VolumeSeries,
 };
 
@@ -717,6 +729,207 @@ function diffPct(a: number | null, b: number | null): number | null {
 }
 
 // ============================================================================
+// Volume Efficiency + Crowded Ratio — combination metrics for the Volume tab
+// and the screener. Pulls the same `ey_price_1d` rows as `getVolumeSeries`
+// but computes different aggregates on top.
+// ============================================================================
+
+/**
+ * |change%| ÷ (volume ÷ sharesOutstanding × 100). Returns `null` when
+ * `shares_outstanding` is missing or zero so the panel can render a
+ * "no float data" state instead of a misleading number.
+ */
+export async function getVolumeEfficiency(
+  symbol: string,
+  opts: { days?: number } = {},
+): Promise<QueryResult<VolumeEfficiency | null>> {
+  const normalized = symbol.toUpperCase();
+  const days = opts.days ?? 30;
+  return withFallback(
+    async (supabase) => {
+      const { data: stockRow, error: stockErr } = await supabase
+        .from('ey_stocks')
+        .select('id, symbol, market, shares_outstanding')
+        .eq('symbol', normalized)
+        .maybeSingle();
+      if (stockErr) throw stockErr;
+      if (!stockRow) return null;
+
+      const shares = stockRow.shares_outstanding == null
+        ? null
+        : Number(stockRow.shares_outstanding);
+      const hasFloatData = shares != null && shares > 0;
+
+      const { data, error } = await supabase
+        .from('ey_price_1d')
+        .select('trade_date, close, volume')
+        .eq('stock_id', stockRow.id)
+        .order('trade_date', { ascending: false })
+        .limit(days);
+      if (error) throw error;
+      const rows = ((data ?? []) as Array<{
+        trade_date: string;
+        close: number;
+        volume: number;
+      }>).map((r) => ({
+        date: r.trade_date,
+        close: Number(r.close),
+        volume: Number(r.volume),
+      }));
+      // Ascending so the rolling mean is consistent with the chart.
+      rows.reverse();
+
+      const latest = rows[rows.length - 1] ?? null;
+      const turnoverPctToday =
+        latest && hasFloatData && shares != null
+          ? (latest.volume / shares) * 100
+          : null;
+
+      // Use the latest daily close-over-close change vs the previous row so
+      // we don't depend on `ey_quote_snapshot` here — that snapshot is the
+      // intraday one and may diverge from the daily bar.
+      const prev = rows.length >= 2 ? rows[rows.length - 2] : null;
+      const dailyChangePct =
+        latest != null && prev != null && prev.close !== 0
+          ? ((latest.close - prev.close) / prev.close) * 100
+          : null;
+      const efficiencyToday =
+        dailyChangePct != null && turnoverPctToday != null && turnoverPctToday > 0
+          ? Math.abs(dailyChangePct) / turnoverPctToday
+          : null;
+
+      const avgTurnoverPct30d = (() => {
+        if (!hasFloatData || shares == null) return null;
+        if (rows.length === 0) return null;
+        const sum = rows.reduce((s, r) => s + (r.volume / shares) * 100, 0);
+        return sum / rows.length;
+      })();
+
+      // Per-day series used by the VolumeEfficiencyChart subplot. Built from
+      // the same `rows` array the headline fields come from — no extra
+      // query. First day has no prior close, so its efficiency is null.
+      const series: EfficiencyPoint[] = rows.map((r, i) => {
+        const prev = i > 0 ? rows[i - 1] : null;
+        const dailyChangePct =
+          prev != null && prev.close !== 0
+            ? ((r.close - prev.close) / prev.close) * 100
+            : null;
+        const turnoverPct =
+          hasFloatData && shares != null ? (r.volume / shares) * 100 : null;
+        const efficiency =
+          dailyChangePct != null && turnoverPct != null && turnoverPct > 0
+            ? Math.abs(dailyChangePct) / turnoverPct
+            : null;
+        return { date: r.date, efficiency, turnoverPct, dailyChangePct };
+      });
+
+      return {
+        symbol: stockRow.symbol,
+        market: stockRow.market as Market,
+        efficiencyToday,
+        turnoverPctToday,
+        avgTurnoverPct30d,
+        sharesOutstanding: shares,
+        hasFloatData,
+        asOfDate: latest?.date ?? null,
+        series,
+      } satisfies VolumeEfficiency;
+    },
+    () => getMockVolumeEfficiency(normalized),
+  );
+}
+
+/**
+ * FOMO_Ratio = MA5(volume) ÷ MA30(volume) per day. Returns the latest ratio
+ * + the full daily series so the UI can draw a MA5 / MA30 subgraph.
+ */
+export async function getCrowdedRatio(
+  symbol: string,
+  opts: { days?: number } = {},
+): Promise<QueryResult<CrowdedRatio | null>> {
+  const normalized = symbol.toUpperCase();
+  const days = opts.days ?? 252;
+  return withFallback(
+    async (supabase) => {
+      const { data: stockRow, error: stockErr } = await supabase
+        .from('ey_stocks')
+        .select('id, symbol, market')
+        .eq('symbol', normalized)
+        .maybeSingle();
+      if (stockErr) throw stockErr;
+      if (!stockRow) return null;
+
+      const { data, error } = await supabase
+        .from('ey_price_1d')
+        .select('trade_date, volume')
+        .eq('stock_id', stockRow.id)
+        .order('trade_date', { ascending: false })
+        .limit(days);
+      if (error) throw error;
+      const rows = ((data ?? []) as Array<{
+        trade_date: string;
+        volume: number;
+      }>).map((r) => ({
+        date: r.trade_date,
+        volume: Number(r.volume),
+      }));
+      rows.reverse();
+
+      if (rows.length === 0) {
+        return {
+          symbol: stockRow.symbol,
+          market: stockRow.market as Market,
+          ratio: null,
+          ma5: null,
+          ma30: null,
+          regime: null,
+          series: [],
+          asOfDate: null,
+        } satisfies CrowdedRatio;
+      }
+
+      const series: CrowdedRatioPoint[] = rows.map((r, i) => {
+        const start5 = Math.max(0, i - 4);
+        const start30 = Math.max(0, i - 29);
+        const slice5 = rows.slice(start5, i + 1);
+        const slice30 = rows.slice(start30, i + 1);
+        const ma5 = slice5.reduce((s, x) => s + x.volume, 0) / slice5.length;
+        const ma30 = slice30.reduce((s, x) => s + x.volume, 0) / slice30.length;
+        const ratio = slice30.length >= 30 ? ma5 / ma30 : null;
+        return { date: r.date, ratio, ma5, ma30 };
+      });
+
+      const latest = series[series.length - 1];
+      const ratio = latest?.ratio ?? null;
+      const ma5 = latest?.ma5 ?? null;
+      const ma30 = latest?.ma30 ?? null;
+      const regime: CrowdedRegime | null =
+        ratio == null
+          ? null
+          : ratio >= 1.5
+            ? 'crowded'
+            : ratio >= 1.2
+              ? 'elevated'
+              : ratio >= 0.8
+                ? 'normal'
+                : 'subdued';
+
+      return {
+        symbol: stockRow.symbol,
+        market: stockRow.market as Market,
+        ratio,
+        ma5,
+        ma30,
+        regime,
+        series,
+        asOfDate: latest?.date ?? null,
+      } satisfies CrowdedRatio;
+    },
+    () => getMockCrowdedRatio(normalized, days),
+  );
+}
+
+// ============================================================================
 // Screener — denormalised one-row-per-stock for /screener. Joins client-side
 // (ey_stocks + ey_quote_snapshot + ey_stock_fundamentals + latest
 // ey_stock_analytics row) so we don't need a SQL view migration; the data
@@ -764,7 +977,7 @@ export async function getScreenerRows(
     async (supabase) => {
       const { data: stocks, error: stocksErr } = await supabase
         .from('ey_stocks')
-        .select('id, symbol, name, market, currency, sector')
+        .select('id, symbol, name, market, currency, sector, shares_outstanding')
         .eq('is_active', true)
         .order('symbol', { ascending: true });
       if (stocksErr) throw stocksErr;
@@ -775,11 +988,12 @@ export async function getScreenerRows(
         market: Market;
         currency: string;
         sector: string | null;
+        shares_outstanding: number | null;
       }>;
       if (stockRows.length === 0) return [];
 
       const ids = stockRows.map((s) => s.id);
-      const [quotesRes, fundRes, analyticsRes] = await Promise.all([
+      const [quotesRes, fundRes, analyticsRes, priceRes] = await Promise.all([
         supabase.from('ey_quote_snapshot').select(
           'stock_id, last_price, change, change_percent, volume',
         ).in('stock_id', ids),
@@ -790,10 +1004,16 @@ export async function getScreenerRows(
         supabase.from('ey_stock_analytics').select(
           'stock_id, as_of_date, return_1m, return_3m, return_6m, return_1y',
         ).in('stock_id', ids).order('as_of_date', { ascending: false }),
+        // 30 days of daily bars per stock. Drives volumeEfficiencyToday
+        // (close pct change + turnoverPct) and crowdedRatio (MA5÷MA30).
+        supabase.from('ey_price_1d').select(
+          'stock_id, trade_date, close, volume',
+        ).in('stock_id', ids).order('trade_date', { ascending: false }).limit(ids.length * 30),
       ]);
       if (quotesRes.error) throw quotesRes.error;
       if (fundRes.error) throw fundRes.error;
       if (analyticsRes.error) throw analyticsRes.error;
+      if (priceRes.error) throw priceRes.error;
 
       const quoteMap = new Map<string, { last_price: number | null; change: number | null; change_percent: number | null; volume: number | null }>();
       for (const q of (quotesRes.data ?? []) as Array<{ stock_id: string; last_price: number | null; change: number | null; change_percent: number | null; volume: number | null }>) {
@@ -809,12 +1029,28 @@ export async function getScreenerRows(
         if (analyticsMap.has(a.stock_id)) continue; // first wins; we ordered desc
         analyticsMap.set(a.stock_id, a);
       }
+      // Daily bars grouped by stock_id, ascending by date.
+      type Bar = { trade_date: string; close: number; volume: number };
+      const priceByStock = new Map<string, Bar[]>();
+      for (const p of (priceRes.data ?? []) as Array<{ stock_id: string; trade_date: string; close: number; volume: number }>) {
+        const arr = priceByStock.get(p.stock_id) ?? [];
+        arr.push({ trade_date: p.trade_date, close: Number(p.close), volume: Number(p.volume) });
+        priceByStock.set(p.stock_id, arr);
+      }
+      for (const arr of priceByStock.values()) {
+        arr.sort((a, b) => a.trade_date.localeCompare(b.trade_date));
+      }
 
       const rows: ScreenerRow[] = stockRows.map((s) => {
         const q = quoteMap.get(s.id);
         const f = fundMap.get(s.id);
         const a = analyticsMap.get(s.id);
         const num = (v: unknown): number | null => (v == null ? null : Number(v));
+        const shares = s.shares_outstanding == null ? null : Number(s.shares_outstanding);
+        const { efficiency, crowded } = deriveEfficiencyAndCrowded(
+          priceByStock.get(s.id) ?? [],
+          shares,
+        );
         return {
           symbol: s.symbol,
           name: s.name,
@@ -832,6 +1068,8 @@ export async function getScreenerRows(
           return3m: a ? num(a.return_3m) : null,
           return6m: a ? num(a.return_6m) : null,
           return1y: a ? num(a.return_1y) : null,
+          volumeEfficiencyToday: efficiency,
+          crowdedRatio: crowded,
         } satisfies ScreenerRow;
       });
 
@@ -845,6 +1083,44 @@ export async function getScreenerRows(
   );
 }
 
+/**
+ * Compute volume efficiency (|close pct change| ÷ (latest volume ÷ shares × 100))
+ * and crowded ratio (latest MA5 ÷ MA30) for a single stock's daily bars.
+ * Returns null for both when the underlying data is missing or insufficient.
+ */
+function deriveEfficiencyAndCrowded(
+  bars: { trade_date: string; close: number; volume: number }[],
+  shares: number | null,
+): { efficiency: number | null; crowded: number | null } {
+  const hasFloat = shares != null && shares > 0;
+  if (bars.length < 2) {
+    return { efficiency: null, crowded: null };
+  }
+  const last = bars[bars.length - 1];
+  const prev = bars[bars.length - 2];
+
+  const turnoverPctToday =
+    hasFloat && shares != null && last != null ? (last.volume / shares) * 100 : null;
+  const dailyChangePct =
+    prev != null && last != null && prev.close !== 0
+      ? ((last.close - prev.close) / prev.close) * 100
+      : null;
+  const efficiency =
+    dailyChangePct != null && turnoverPctToday != null && turnoverPctToday > 0
+      ? Math.abs(dailyChangePct) / turnoverPctToday
+      : null;
+
+  // Crowded ratio: need ≥30 rows for the MA30 window to be full.
+  let crowded: number | null = null;
+  if (bars.length >= 30) {
+    const sum5 = bars.slice(-5).reduce((s, b) => s + b.volume, 0) / 5;
+    const sum30 = bars.slice(-30).reduce((s, b) => s + b.volume, 0) / 30;
+    crowded = sum30 > 0 ? sum5 / sum30 : null;
+  }
+
+  return { efficiency, crowded };
+}
+
 /** Null-safe filtering — null values pass when no constraint is specified. */
 function applyScreenerFilters(rows: ScreenerRow[], f: ScreenerFilters): ScreenerRow[] {
   return rows.filter((r) => {
@@ -854,6 +1130,18 @@ function applyScreenerFilters(rows: ScreenerRow[], f: ScreenerFilters): Screener
     if (f.peMax != null && (r.peRatio == null || r.peRatio > f.peMax)) return false;
     if (f.yieldMin != null && (r.dividendYield == null || r.dividendYield < f.yieldMin)) return false;
     if (f.return1mMin != null && (r.return1m == null || r.return1m < f.return1mMin)) return false;
+    if (
+      f.volumeEfficiencyMin != null &&
+      (r.volumeEfficiencyToday == null || r.volumeEfficiencyToday < f.volumeEfficiencyMin)
+    ) {
+      return false;
+    }
+    if (
+      f.crowdedRatioMin != null &&
+      (r.crowdedRatio == null || r.crowdedRatio < f.crowdedRatioMin)
+    ) {
+      return false;
+    }
     return true;
   });
 }

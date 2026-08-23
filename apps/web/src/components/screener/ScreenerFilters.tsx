@@ -42,6 +42,10 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
     else params.delete('yield');
     if (next.return1mMin != null) params.set('ret1m', String(next.return1mMin));
     else params.delete('ret1m');
+    if (next.volumeEfficiencyMin != null) params.set('eff', String(next.volumeEfficiencyMin));
+    else params.delete('eff');
+    if (next.crowdedRatioMin != null) params.set('crowd', String(next.crowdedRatioMin));
+    else params.delete('crowd');
 
     const query = params.toString();
     startTransition(() => {
@@ -61,7 +65,9 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
     current.marketCapMin != null ||
     current.peMax != null ||
     current.yieldMin != null ||
-    current.return1mMin != null;
+    current.return1mMin != null ||
+    current.volumeEfficiencyMin != null ||
+    current.crowdedRatioMin != null;
 
   return (
     <div
@@ -140,6 +146,34 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
           { value: '-10', label: `≥ −10%` },
           { value: '0', label: `≥ 0%` },
           { value: '10', label: `≥ 10%` },
+        ]}
+      />
+      <SelectField
+        label={t('filter.volumeEfficiency')}
+        value={current.volumeEfficiencyMin == null ? '' : String(current.volumeEfficiencyMin)}
+        onChange={(v) =>
+          apply({ ...current, volumeEfficiencyMin: v === '' ? undefined : Number(v) })
+        }
+        options={[
+          { value: '', label: t('filter.any') },
+          { value: '0.25', label: t('filter.eff0_25') },
+          { value: '0.5', label: t('filter.eff0_5') },
+          { value: '1', label: t('filter.eff1') },
+          { value: '2', label: t('filter.eff2') },
+        ]}
+      />
+      <SelectField
+        label={t('filter.crowdedRatio')}
+        value={current.crowdedRatioMin == null ? '' : String(current.crowdedRatioMin)}
+        onChange={(v) =>
+          apply({ ...current, crowdedRatioMin: v === '' ? undefined : Number(v) })
+        }
+        options={[
+          { value: '', label: t('filter.any') },
+          { value: '1', label: t('filter.crowd1') },
+          { value: '1.2', label: t('filter.crowd1_2') },
+          { value: '1.5', label: t('filter.crowd1_5') },
+          { value: '2', label: t('filter.crowd2') },
         ]}
       />
 

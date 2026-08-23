@@ -10,11 +10,16 @@ import type {
 } from '@eyesinvest/types';
 import { MARKET_INDICES } from '@eyesinvest/types';
 import type {
+  CrowdedRatio,
+  CrowdedRatioPoint,
+  CrowdedRegime,
+  EfficiencyPoint,
   RelativeStrength,
   ScreenerRow,
   StockDetail,
   StockSearchResult,
   VolumeAggregates,
+  VolumeEfficiency,
   VolumeSeries,
 } from './types';
 
@@ -570,6 +575,142 @@ export function getMockRelativeStrength(
 }
 
 // ============================================================================
+// Volume Efficiency + Crowded Ratio — combination metrics. Derive from the
+// existing mock primitives so the two analyses stay consistent with the chart
+// + quote + fundamentals already pulled on the page.
+// ============================================================================
+
+/**
+ * Roll up volume efficiency for the latest day in the synthetic series.
+ * Pulls `sharesOutstanding` from `getMockFundamentals` and `changePercent`
+ * from `getMockQuote` so the panel headline agrees with the rest of the page.
+ */
+export function getMockVolumeEfficiency(symbol: string): VolumeEfficiency | null {
+  const detail = getMockStockDetail(symbol);
+  if (!detail) return null;
+  const fundamentals = getMockFundamentals(symbol);
+  const quote = getMockQuote(symbol);
+  const shares = fundamentals?.sharesOutstanding ?? null;
+  const hasFloatData = shares != null && shares > 0;
+
+  // 30 days of bars for the rolling-avg turnover calculation.
+  const bars = generateSyntheticPriceSeries(symbol, 30);
+  const last = bars[bars.length - 1] ?? null;
+
+  const turnoverPctToday =
+    last && hasFloatData && shares != null ? (last.volume / shares) * 100 : null;
+
+  const efficiencyToday =
+    quote != null && turnoverPctToday != null && turnoverPctToday > 0
+      ? Math.abs(quote.changePercent) / turnoverPctToday
+      : null;
+
+  const avgTurnoverPct30d = (() => {
+    if (!hasFloatData || shares == null) return null;
+    if (bars.length === 0) return null;
+    const sum = bars.reduce((s, b) => s + (b.volume / shares) * 100, 0);
+    return sum / bars.length;
+  })();
+
+  // Per-day series for the VolumeEfficiencyChart subplot. Mirrors the
+  // production query: each row carries its own dailyChangePct + turnoverPct
+  // so the UI can recompute efficiency / draw tooltips without re-fetching.
+  const series: EfficiencyPoint[] = bars.map((b, i) => {
+    const prev = i > 0 ? bars[i - 1] : null;
+    const dailyChangePct =
+      prev != null && prev.close !== 0
+        ? ((b.close - prev.close) / prev.close) * 100
+        : null;
+    const turnoverPct =
+      hasFloatData && shares != null ? (b.volume / shares) * 100 : null;
+    const efficiency =
+      dailyChangePct != null && turnoverPct != null && turnoverPct > 0
+        ? Math.abs(dailyChangePct) / turnoverPct
+        : null;
+    return { date: b.time, efficiency, turnoverPct, dailyChangePct };
+  });
+
+  return {
+    symbol: detail.symbol,
+    market: detail.market,
+    efficiencyToday,
+    turnoverPctToday,
+    avgTurnoverPct30d,
+    sharesOutstanding: shares,
+    hasFloatData,
+    asOfDate: last?.time ?? null,
+    series,
+  } satisfies VolumeEfficiency;
+}
+
+/**
+ * Mock crowded ratio (FOMO_Ratio = MA5(volume) ÷ MA30(volume)). Uses the same
+ * seeded synthetic price series so the ratio moves with whatever "story"
+ * the symbol is being told — no separate RNG state to keep in sync.
+ */
+export function getMockCrowdedRatio(symbol: string, days = 252): CrowdedRatio | null {
+  const detail = getMockStockDetail(symbol);
+  if (!detail) return null;
+
+  const bars = generateSyntheticPriceSeries(symbol, days);
+  if (bars.length === 0) {
+    return {
+      symbol: detail.symbol,
+      market: detail.market,
+      ratio: null,
+      ma5: null,
+      ma30: null,
+      regime: null,
+      series: [],
+      asOfDate: null,
+    } satisfies CrowdedRatio;
+  }
+
+  const series: CrowdedRatioPoint[] = bars.map((b, i) => {
+    const start5 = Math.max(0, i - 4);
+    const start30 = Math.max(0, i - 29);
+    const slice5 = bars.slice(start5, i + 1);
+    const slice30 = bars.slice(start30, i + 1);
+    const ma5 = slice5.reduce((s, x) => s + x.volume, 0) / slice5.length;
+    const ma30 = slice30.reduce((s, x) => s + x.volume, 0) / slice30.length;
+    const ratio = slice30.length >= 30 ? ma5 / ma30 : null;
+    return {
+      date: b.time,
+      ratio,
+      ma5,
+      ma30,
+    };
+  });
+
+  const latest = series[series.length - 1];
+  const ratio = latest?.ratio ?? null;
+  const ma5 = latest?.ma5 ?? null;
+  const ma30 = latest?.ma30 ?? null;
+
+  const regime: CrowdedRegime | null =
+    ratio == null
+      ? null
+      : ratio >= 1.5
+        ? 'crowded'
+        : ratio >= 1.2
+          ? 'elevated'
+          : ratio >= 0.8
+            ? 'normal'
+            : 'subdued';
+
+  return {
+    symbol: detail.symbol,
+    market: detail.market,
+    ratio,
+    ma5,
+    ma30,
+    regime,
+    series,
+    asOfDate: latest?.date ?? null,
+  } satisfies CrowdedRatio;
+}
+
+// ============================================================================
 // Screener — denormalised one-row-per-stock mock. Combines quote + fundamentals
 // + latest analytics for every stock in the mock universe so the screener page
 // has the same shape regardless of Supabase availability.
@@ -586,6 +727,8 @@ function buildMockScreenerRow(symbol: string): ScreenerRow | null {
   const analytics = getMockAnalytics(symbol, 252);
   if (!detail) return null;
   const latest = analytics[analytics.length - 1] ?? null;
+  const efficiency = getMockVolumeEfficiency(symbol);
+  const crowded = getMockCrowdedRatio(symbol);
   return {
     symbol: detail.symbol,
     name: detail.name,
@@ -603,6 +746,8 @@ function buildMockScreenerRow(symbol: string): ScreenerRow | null {
     return3m: latest?.return3m ?? null,
     return6m: latest?.return6m ?? null,
     return1y: latest?.return1y ?? null,
+    volumeEfficiencyToday: efficiency?.efficiencyToday ?? null,
+    crowdedRatio: crowded?.ratio ?? null,
   } satisfies ScreenerRow;
 }
 

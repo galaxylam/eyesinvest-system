@@ -40,3 +40,25 @@ export function formatRelative(date: Date | string, now: Date = new Date()): str
   const diffDay = Math.round(diffHr / 24);
   return `${diffDay}d ago`;
 }
+
+/**
+ * Compact "MMM D" / "M/D" label for sub-chart x-axes. Locale-aware: en-GB
+ * yields "5 Mar 2024", en-US yields "Mar 5, 2024", zh-HK yields "3月5日".
+ * If `includeYear` is true and the date is in a different year than now,
+ * appends the year for clarity on the 3Y view.
+ */
+export function formatShortDate(
+  date: Date | string,
+  opts: { locale?: string; includeYear?: boolean } = {},
+): string {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return '—';
+  const locale = opts.locale;
+  const sameYear =
+    !opts.includeYear || d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleDateString(locale, {
+    month: 'short',
+    day: 'numeric',
+    year: sameYear ? undefined : 'numeric',
+  });
+}

@@ -119,3 +119,14 @@ export function direction(value: number | null | undefined): 'up' | 'down' | 'fl
   if (value == null || Number.isNaN(value) || value === 0) return 'flat';
   return value > 0 ? 'up' : 'down';
 }
+
+/**
+ * Compact unitless ratio for "× multiples" (volume efficiency, crowded
+ * ratio). Null/NaN → '—', otherwise `${value.toFixed(2)}×`. Locale-agnostic
+ * on purpose: the `×` glyph is the same in en/zh-HK/zh-CN and `toFixed(2)`
+ * already uses the locale's decimal separator via `Number.prototype`.
+ */
+export function formatRatio(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return '—';
+  return `${value.toFixed(2)}×`;
+}

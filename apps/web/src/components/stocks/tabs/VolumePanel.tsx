@@ -13,9 +13,16 @@ interface VolumePanelProps {
 /**
  * Volume tab panel — daily histogram plus 4 stat tiles (latest, 30d avg,
  * 90d avg, window high). Aggregates are derived in `getVolumeSeries` from
- * `ey_price_1d`.
+ * `ey_price_1d`. The combination metrics (Volume Efficiency + Crowded
+ * Ratio) now live as dedicated sub-charts directly below the main
+ * PriceChart on the stock page; this panel is intentionally raw-volume
+ * focused.
  */
-export async function VolumePanel({ currency, symbol, volume }: VolumePanelProps) {
+export async function VolumePanel({
+  currency,
+  symbol,
+  volume,
+}: VolumePanelProps) {
   const t = await getTranslations('stock');
   const locale = await getLocale();
 

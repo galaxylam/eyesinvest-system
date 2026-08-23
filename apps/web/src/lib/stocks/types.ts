@@ -61,6 +61,97 @@ export interface RelativeStrength {
 // latest ey_stock_analytics row, joined client-side by stock id.
 // ============================================================================
 
+// ============================================================================
+// Volume Efficiency + Crowded Ratio — combination metrics for the Volume tab
+// and the screener.
+// ============================================================================
+
+/**
+ * "1% price move per 1% of float" — the textbook measure of how much
+ * information a session's volume carried. Computed as
+ *   turnoverPct = volume / sharesOutstanding * 100
+ *   efficiency  = |changePercent| / turnoverPct
+ * Returns `null` when `sharesOutstanding` is missing or zero, so the panel
+ * can show a "no float data" state instead of a misleading number.
+ */
+export interface VolumeEfficiency {
+  symbol: string;
+  market: Market;
+  /** |change%| ÷ (volume ÷ sharesOutstanding × 100) for the latest trading day. */
+  efficiencyToday: number | null;
+  /** volume ÷ sharesOutstanding × 100 for the latest trading day. */
+  turnoverPctToday: number | null;
+  /** 30-day rolling mean of turnoverPct. Null when shares float is unknown. */
+  avgTurnoverPct30d: number | null;
+  /** Shares outstanding at fetch time, surfaced for context in the panel. */
+  sharesOutstanding: number | null;
+  /**
+   * Cheap gate so the panel can render "Shares outstanding unavailable"
+   * instead of dashes — same flag the screener filter cares about.
+   */
+  hasFloatData: boolean;
+  asOfDate: string | null;
+  /**
+   * Per-day series used by the VolumeEfficiencyChart subplot under the
+   * main PriceChart. Length matches the volume window pulled by
+   * `getVolumeEfficiency`. `efficiency` is null on the first day (no
+   * close-over-close prior) or whenever turnoverPct is unknown.
+   */
+  series: EfficiencyPoint[];
+}
+
+/**
+ * Per-day record for the Volume Efficiency subplot. `efficiency` =
+ * `|dailyChangePct| / turnoverPct`; the inputs are kept on the shape so
+ * the UI can show a tooltip / breakdown later without a second query.
+ */
+export interface EfficiencyPoint {
+  /** ISO date string YYYY-MM-DD. */
+  date: string;
+  /** |changePct| / turnoverPct for this day. Null when prior day or shares are missing. */
+  efficiency: number | null;
+  /** volume / sharesOutstanding × 100 for this day. Null when shares are missing. */
+  turnoverPct: number | null;
+  /** (close - prevClose) / prevClose × 100. Null on the first day. */
+  dailyChangePct: number | null;
+}
+
+/** Per-day MA5 / MA30 of volume + their ratio, used to plot the subgraph. */
+export interface CrowdedRatioPoint {
+  date: string;
+  ratio: number | null;
+  ma5: number | null;
+  ma30: number | null;
+}
+
+/**
+ * FOMO_Ratio = MA5(volume) ÷ MA30(volume). Latest value plus the full daily
+ * series so the UI can plot a MA5/MA30 subgraph.
+ *
+ * Regime bucketing (qualitative, derived from the latest ratio):
+ *   ratio ≥ 1.5  → crowded    (recent activity well above baseline)
+ *   ratio ≥ 1.2  → elevated
+ *   ratio ≥ 0.8  → normal
+ *   ratio < 0.8  → subdued
+ *   ratio == null → null       (insufficient history)
+ */
+export type CrowdedRegime = 'crowded' | 'elevated' | 'normal' | 'subdued';
+
+export interface CrowdedRatio {
+  symbol: string;
+  market: Market;
+  /** Latest MA5 ÷ MA30 (null until both windows have enough history). */
+  ratio: number | null;
+  /** Latest MA5 of volume. */
+  ma5: number | null;
+  /** Latest MA30 of volume. */
+  ma30: number | null;
+  regime: CrowdedRegime | null;
+  /** Same length as the volume series pulled for this query. */
+  series: CrowdedRatioPoint[];
+  asOfDate: string | null;
+}
+
 export interface ScreenerRow {
   symbol: string;
   name: string;
@@ -78,6 +169,10 @@ export interface ScreenerRow {
   return3m: number | null;
   return6m: number | null;
   return1y: number | null;
+  /** |change%| / (volume / sharesOutstanding * 100) for the latest day. Null when shares float is unknown. */
+  volumeEfficiencyToday: number | null;
+  /** MA5(volume) / MA30(volume) for the latest day. Null until ≥30 days of history. */
+  crowdedRatio: number | null;
 }
 
 export interface ScreenerFilters {
@@ -93,6 +188,10 @@ export interface ScreenerFilters {
   yieldMin?: number;
   /** Lower bound on 1-month return (percent points, e.g. 0 = ≥0%). */
   return1mMin?: number;
+  /** Lower bound on volume efficiency (ratio, e.g. 1 = ≥1×). */
+  volumeEfficiencyMin?: number;
+  /** Lower bound on crowded ratio (MA5÷MA30, e.g. 1.5 = ≥1.5×). */
+  crowdedRatioMin?: number;
 }
 
 export type ScreenerSortColumn =

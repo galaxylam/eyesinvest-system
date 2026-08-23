@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import {
+  getCrowdedRatio,
   getPriceRange52W,
   getPriceSeries,
   getQuote,
@@ -8,13 +9,14 @@ import {
   getStockAnalytics,
   getStockDetail,
   getStockFundamentals,
+  getVolumeEfficiency,
   getVolumeSeries,
 } from '@/lib/stocks/queries';
 import { extractMaSeries } from '@/lib/format/ma';
 import { AnalyticsPanel } from '@/components/stocks/AnalyticsPanel';
 import { KeyStats } from '@/components/stocks/KeyStats';
-import { PriceChart } from '@/components/stocks/PriceChart';
 import { RangePicker, type ChartRange } from '@/components/stocks/RangePicker';
+import { StockChartStack } from '@/components/stocks/StockChartStack';
 import { StockHeader } from '@/components/stocks/StockHeader';
 import { StockTabs } from '@/components/stocks/tabs/StockTabs';
 
@@ -52,17 +54,30 @@ export default async function StockPage({ params, searchParams }: StockPageProps
   const decodedSymbol = decodeURIComponent(symbol);
   const currentRange = parseRange(range);
 
-  const [detailRes, quoteRes, seriesRes, fundamentalsRes, rangeRes, analyticsRes, volumeRes] =
-    await Promise.all([
-      getStockDetail(decodedSymbol),
-      getQuote(decodedSymbol),
-      getPriceSeries(decodedSymbol, { days: CHART_DAYS }),
-      getStockFundamentals(decodedSymbol),
-      getPriceRange52W(decodedSymbol),
-      // Window matches the price series so the MA overlays span the full chart.
-      getStockAnalytics(decodedSymbol, { days: CHART_DAYS }),
-      getVolumeSeries(decodedSymbol, { days: CHART_DAYS }),
-    ]);
+  const [
+    detailRes,
+    quoteRes,
+    seriesRes,
+    fundamentalsRes,
+    rangeRes,
+    analyticsRes,
+    volumeRes,
+    volumeEfficiencyRes,
+    crowdedRatioRes,
+  ] = await Promise.all([
+    getStockDetail(decodedSymbol),
+    getQuote(decodedSymbol),
+    getPriceSeries(decodedSymbol, { days: CHART_DAYS }),
+    getStockFundamentals(decodedSymbol),
+    getPriceRange52W(decodedSymbol),
+    // Window matches the price series so the MA overlays span the full chart.
+    getStockAnalytics(decodedSymbol, { days: CHART_DAYS }),
+    getVolumeSeries(decodedSymbol, { days: CHART_DAYS }),
+    // Full 3y window so the sub-chart covers any range-picker setting (1M…3Y).
+    getVolumeEfficiency(decodedSymbol, { days: CHART_DAYS }),
+    // Full 3y window so the sub-chart covers any range-picker setting (1M…3Y).
+    getCrowdedRatio(decodedSymbol, { days: CHART_DAYS }),
+  ]);
 
   const stock = detailRes.data;
   if (!stock) notFound();
@@ -73,6 +88,8 @@ export default async function StockPage({ params, searchParams }: StockPageProps
   const range52W = rangeRes.data;
   const analyticsSeries = analyticsRes.data;
   const volume = volumeRes.data;
+  const volumeEfficiency = volumeEfficiencyRes.data;
+  const crowdedRatio = crowdedRatioRes.data;
   const latestAnalytics = analyticsSeries[analyticsSeries.length - 1] ?? null;
   const maSeries = extractMaSeries(analyticsSeries);
 
@@ -111,10 +128,16 @@ export default async function StockPage({ params, searchParams }: StockPageProps
           <RangePicker current={currentRange} />
         </div>
 
-        <PriceChart
+        {/* PriceChart + sub-charts share one Range-picker-driven visible
+            window. The main chart is freely zoomable on its own; the two
+            sub-charts are locked to the same window via `visibleDays`
+            so they can never drift out of sync. */}
+        <StockChartStack
           symbol={stock.symbol}
           series={series?.bars}
           maSeries={maSeries}
+          volumeEfficiency={volumeEfficiency}
+          crowdedRatio={crowdedRatio}
           visibleDays={RANGE_DAYS[currentRange]}
         />
 
