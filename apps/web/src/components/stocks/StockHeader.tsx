@@ -71,7 +71,7 @@ export async function StockHeader({
               {t('asOf')}: {formatAsOf(quote.asOf)}
             </span>
             <span className="tabular text-xs text-fg-subtle">
-              {t('volume')}: {formatVolume(quote.volume, locale)}
+              {t('avgVolume')}: {formatVolume(quote.volume, locale)}
             </span>
           </>
         ) : (

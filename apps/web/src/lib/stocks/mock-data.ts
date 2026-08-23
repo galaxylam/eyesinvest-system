@@ -8,7 +8,14 @@ import type {
   StockAnalytics,
   StockFundamentals,
 } from '@eyesinvest/types';
-import type { StockDetail, StockSearchResult } from './types';
+import { MARKET_INDICES } from '@eyesinvest/types';
+import type {
+  RelativeStrength,
+  StockDetail,
+  StockSearchResult,
+  VolumeAggregates,
+  VolumeSeries,
+} from './types';
 
 /**
  * Bundled mock stock universe. Mirrors the planned `local/supabase/seed.sql`
@@ -449,4 +456,114 @@ export function getMockIndexQuotes(): IndexQuote[] {
       asOf: today,
     } satisfies IndexQuote;
   });
+}
+
+// ============================================================================
+// Phase 4 — mock volume series + relative-strength (fallback for the tabbed
+// stock-detail panels). Both derive from existing mock primitives so values
+// stay consistent with the chart + analytics panels above.
+// ============================================================================
+
+/**
+ * Mock volume series — derives daily bars from `generateSyntheticPriceSeries`
+ * so values are consistent with the chart and quote on the same page.
+ */
+export function getMockVolumeSeries(symbol: string, days = 252): VolumeSeries | null {
+  const detail = getMockStockDetail(symbol);
+  if (!detail) return null;
+  const bars = generateSyntheticPriceSeries(detail.symbol, days);
+  if (bars.length === 0) {
+    return {
+      symbol: detail.symbol,
+      market: detail.market,
+      daily: [],
+      aggregates: {
+        avg30d: null,
+        avg90d: null,
+        latestVs30dPct: null,
+        maxInWindow: null,
+        maxDate: null,
+      } satisfies VolumeAggregates,
+    };
+  }
+  const daily = bars.map((b, i) => {
+    const start = Math.max(0, i - 19);
+    const slice = bars.slice(start, i + 1);
+    const sum = slice.reduce((s, x) => s + x.volume, 0);
+    return {
+      date: b.time,
+      close: b.close,
+      volume: b.volume,
+      avgVolume20: slice.length > 0 ? sum / slice.length : null,
+    };
+  });
+  const avg = (window: number): number | null => {
+    if (daily.length < window) return null;
+    const slice = daily.slice(-window);
+    return slice.reduce((s, r) => s + r.volume, 0) / slice.length;
+  };
+  const avg30d = avg(30);
+  const avg90d = avg(90);
+  const last = daily[daily.length - 1];
+  const latestVs30dPct =
+    last != null && avg30d != null && avg30d > 0
+      ? +(((last.volume - avg30d) / avg30d) * 100).toFixed(2)
+      : null;
+  let maxVol = -Infinity;
+  let maxDate: string | null = null;
+  for (const r of daily) {
+    if (r.volume > maxVol) {
+      maxVol = r.volume;
+      maxDate = r.date;
+    }
+  }
+  return {
+    symbol: detail.symbol,
+    market: detail.market,
+    daily,
+    aggregates: {
+      avg30d,
+      avg90d,
+      latestVs30dPct,
+      maxInWindow: Number.isFinite(maxVol) ? maxVol : null,
+      maxDate,
+    },
+  } satisfies VolumeSeries;
+}
+
+/**
+ * Mock relative-strength payload. Reads the latest analytics row to keep the
+ * 1m/3m/6m/1y numbers aligned with the VolatilityPanel, and the current index
+ * session change from `getMockIndexQuotes` for `rsSession`.
+ */
+export function getMockRelativeStrength(
+  symbol: string,
+  opts: { market: Market; quoteChangePercent: number | null },
+): RelativeStrength {
+  const indexCode: IndexCode = opts.market === 'HK' ? 'HSI' : 'SPX';
+  const meta = MARKET_INDICES[indexCode];
+  const indices = getMockIndexQuotes();
+  const idx = indices.find((i) => i.code === indexCode);
+  const indexChangePercent = idx ? idx.changePercent : null;
+
+  const analytics = getMockAnalytics(symbol, 252);
+  const latest = analytics[analytics.length - 1] ?? null;
+
+  const diff = (a: number | null, b: number | null): number | null =>
+    a == null || b == null ? null : +(a - b).toFixed(2);
+
+  return {
+    indexCode,
+    indexName: {
+      en: meta.nameEn,
+      zhHk: meta.nameZhHk,
+      zhCn: meta.nameZhCn,
+    },
+    indexChangePercent,
+    stockReturn1m: latest?.return1m ?? null,
+    stockReturn3m: latest?.return3m ?? null,
+    stockReturn6m: latest?.return6m ?? null,
+    stockReturn1y: latest?.return1y ?? null,
+    rsSession: diff(opts.quoteChangePercent, indexChangePercent),
+  } satisfies RelativeStrength;
 }

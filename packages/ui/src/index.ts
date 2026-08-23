@@ -5,4 +5,5 @@ export * from './components/label';
 export * from './components/badge';
 export * from './components/skeleton';
 export * from './components/table';
+export * from './components/tabs';
 export { cn } from './lib/cn';

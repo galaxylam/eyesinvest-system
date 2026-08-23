@@ -93,7 +93,6 @@
     "dividendYield": "Dividend yield",
     "dayRange": "Day range",
     "fiftyTwoWeekRange": "52-wk range",
-    "volume": "Volume",
     "avgVolume": "Avg volume",
     "sharesOutstanding": "Shares outstanding",
     "lastPrice": "Last price",
@@ -144,6 +143,46 @@
       "ma20": "MA(20)",
       "ma50": "MA(50)",
       "ma200": "MA(200)"
+    },
+    "comingSoon": {
+      "value": "Coming soon",
+      "note": "This section ships in a later phase."
+    },
+    "volumePanel": {
+      "panelTitle": "Volume",
+      "headline": "Session vs 30-day avg",
+      "latestVolume": "Latest session volume",
+      "avg30d": "30-day average",
+      "avg90d": "90-day average",
+      "maxInWindow": "Window high",
+      "maxDate": "on {date}",
+      "avgVolume20": "20-day avg volume",
+      "note": "Aggregated from daily bars; weekend gaps excluded."
+    },
+    "volatilityPanel": {
+      "panelTitle": "Volatility",
+      "headline": "30-day annualized volatility",
+      "volatility30d": "Annualized volatility",
+      "maxDrawdown30d": "30-day max drawdown",
+      "regimeLabel": {
+        "low": "Low",
+        "mid": "Moderate",
+        "high": "High"
+      },
+      "note": "Returns are trailing windows. Negative % shown as minus."
+    },
+    "relativeStrengthPanel": {
+      "panelTitle": "Relative Strength vs {indexName}",
+      "indexHeader": "Benchmark",
+      "indexChange": "{indexName} · Session {pct}",
+      "rsNote": "Session RS = stock change − benchmark change today. Per-window benchmark history is not yet stored, so 1m/3m/6m/1y tiles show stock returns without a comparison.",
+      "sparklineNote": "Session-only sample",
+      "sessionRsLabel": "Session RS",
+      "sessionRsVs": "Stock {stockPct} − {indexName} {indexPct}",
+      "stockReturn1m": "1-month return",
+      "stockReturn3m": "3-month return",
+      "stockReturn6m": "6-month return",
+      "stockReturn1y": "1-year return"
     }
   },
   "admin": {

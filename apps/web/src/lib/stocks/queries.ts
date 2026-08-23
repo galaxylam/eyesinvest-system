@@ -1,6 +1,7 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
+  IndexCode,
   IndexQuote,
   Market,
   PriceSeries,
@@ -8,7 +9,7 @@ import type {
   StockAnalytics,
   StockFundamentals,
 } from '@eyesinvest/types';
-import { getMarketStatus } from '@eyesinvest/types';
+import { MARKET_INDICES, getMarketStatus } from '@eyesinvest/types';
 import { createServerClient } from '@/lib/supabase/server';
 import {
   getAllMockStocks,
@@ -17,13 +18,23 @@ import {
   getMockIndexQuotes,
   getMockPriceSeries,
   getMockQuote,
+  getMockRelativeStrength,
   getMockStockDetail,
   getMockTopMoversWithChange,
+  getMockVolumeSeries,
   getTopMockMovers,
   searchMockStocks,
   type MockMoverRow,
 } from './mock-data';
-import type { StockDetail, StockSearchResult } from './types';
+import type {
+  RelativeStrength,
+  StockDetail,
+  StockSearchResult,
+  VolumeAggregates,
+  VolumeSeries,
+} from './types';
+
+export type { RelativeStrength, VolumeAggregates, VolumeSeries };
 
 interface QueryResult<T> {
   data: T;
@@ -494,4 +505,200 @@ export async function getIndexQuotes(): Promise<QueryResult<IndexQuote[]>> {
     },
     () => getMockIndexQuotes(),
   );
+}
+
+// ============================================================================
+// Phase 4 — volume + relative-strength queries for tabbed stock detail
+// ============================================================================
+
+/**
+ * Daily volume series + aggregates for the Volume tab. Reads from
+ * `ey_price_1d` (same table as the candlestick chart) — no new schema work.
+ */
+export async function getVolumeSeries(
+  symbol: string,
+  opts: { days?: number } = {},
+): Promise<QueryResult<VolumeSeries | null>> {
+  const normalized = symbol.toUpperCase();
+  const days = opts.days ?? 252;
+  return withFallback(
+    async (supabase) => {
+      const { data: stockRow, error: stockErr } = await supabase
+        .from('ey_stocks')
+        .select('id, symbol, market')
+        .eq('symbol', normalized)
+        .maybeSingle();
+      if (stockErr) throw stockErr;
+      if (!stockRow) return null;
+
+      const { data, error } = await supabase
+        .from('ey_price_1d')
+        .select('trade_date, close, volume')
+        .eq('stock_id', stockRow.id)
+        .order('trade_date', { ascending: false })
+        .limit(days);
+      if (error) throw error;
+
+      const rows = ((data ?? []) as Array<{
+        trade_date: string;
+        close: number;
+        volume: number;
+      }>).map((r) => ({
+        date: r.trade_date,
+        close: Number(r.close),
+        volume: Number(r.volume),
+      }));
+      if (rows.length === 0) return null;
+
+      // Supabase returns descending; flip so the rolling mean and aggregates
+      // match the chart's left→right order.
+      rows.reverse();
+
+      const avg = (window: number): number | null => {
+        if (rows.length < window) return null;
+        const slice = rows.slice(-window);
+        return slice.reduce((s, r) => s + r.volume, 0) / slice.length;
+      };
+      const avg30d = avg(30);
+      const avg90d = avg(90);
+
+      const daily = rows.map((r, i) => {
+        const start = Math.max(0, i - 19);
+        const slice = rows.slice(start, i + 1);
+        const sum = slice.reduce((s, x) => s + x.volume, 0);
+        return {
+          date: r.date,
+          close: r.close,
+          volume: r.volume,
+          avgVolume20: slice.length > 0 ? sum / slice.length : null,
+        };
+      });
+
+      const latest = rows[rows.length - 1];
+      const latestVs30dPct =
+        latest != null && avg30d != null && avg30d > 0
+          ? +(((latest.volume - avg30d) / avg30d) * 100).toFixed(2)
+          : null;
+
+      let maxVol = -Infinity;
+      let maxDate: string | null = null;
+      for (const r of rows) {
+        if (r.volume > maxVol) {
+          maxVol = r.volume;
+          maxDate = r.date;
+        }
+      }
+
+      return {
+        symbol: stockRow.symbol,
+        market: stockRow.market as Market,
+        daily,
+        aggregates: {
+          avg30d,
+          avg90d,
+          latestVs30dPct,
+          maxInWindow: Number.isFinite(maxVol) ? maxVol : null,
+          maxDate,
+        },
+      } satisfies VolumeSeries;
+    },
+    () => getMockVolumeSeries(normalized, days),
+  );
+}
+
+/**
+ * Stock-vs-benchmark relative strength.
+ *
+ * `ey_index_quote` is a single-row-per-index snapshot table — there is no
+ * per-window benchmark history to subtract from a 1m/3m/6m/1y stock return.
+ * So this query only computes `rsSession` (stock `changePercent` minus
+ * benchmark `changePercent` for today). The 1m/3m/6m/1y stock returns are
+ * still pulled so the panel can show them without comparison.
+ */
+export async function getRelativeStrength(
+  symbol: string,
+  opts: { market: Market; quoteChangePercent?: number | null },
+): Promise<QueryResult<RelativeStrength | null>> {
+  const normalized = symbol.toUpperCase();
+  const indexCode: IndexCode = opts.market === 'HK' ? 'HSI' : 'SPX';
+  const indexMeta = MARKET_INDICES[indexCode];
+
+  return withFallback(
+    async (supabase) => {
+      const { data: indexRow, error: indexErr } = await supabase
+        .from('ey_index_quote')
+        .select('change_percent')
+        .eq('code', indexCode)
+        .maybeSingle();
+      if (indexErr) throw indexErr;
+      const indexChangePercent =
+        indexRow == null || indexRow.change_percent == null
+          ? null
+          : Number(indexRow.change_percent);
+
+      const { data: stockRow, error: stockErr } = await supabase
+        .from('ey_stocks')
+        .select('id')
+        .eq('symbol', normalized)
+        .maybeSingle();
+      if (stockErr) throw stockErr;
+      if (!stockRow) {
+        return {
+          indexCode,
+          indexName: {
+            en: indexMeta.nameEn,
+            zhHk: indexMeta.nameZhHk,
+            zhCn: indexMeta.nameZhCn,
+          },
+          indexChangePercent,
+          stockReturn1m: null,
+          stockReturn3m: null,
+          stockReturn6m: null,
+          stockReturn1y: null,
+          rsSession: diffPct(opts.quoteChangePercent ?? null, indexChangePercent),
+        } satisfies RelativeStrength;
+      }
+
+      const { data: analyticsRow, error: analyticsErr } = await supabase
+        .from('ey_stock_analytics')
+        .select('return_1m, return_3m, return_6m, return_1y')
+        .eq('stock_id', stockRow.id)
+        .order('as_of_date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (analyticsErr) throw analyticsErr;
+      const num = (v: unknown): number | null =>
+        v == null ? null : Number(v);
+      const r1m = analyticsRow ? num(analyticsRow.return_1m) : null;
+      const r3m = analyticsRow ? num(analyticsRow.return_3m) : null;
+      const r6m = analyticsRow ? num(analyticsRow.return_6m) : null;
+      const r1y = analyticsRow ? num(analyticsRow.return_1y) : null;
+
+      return {
+        indexCode,
+        indexName: {
+          en: indexMeta.nameEn,
+          zhHk: indexMeta.nameZhHk,
+          zhCn: indexMeta.nameZhCn,
+        },
+        indexChangePercent,
+        stockReturn1m: r1m,
+        stockReturn3m: r3m,
+        stockReturn6m: r6m,
+        stockReturn1y: r1y,
+        rsSession: diffPct(opts.quoteChangePercent ?? null, indexChangePercent),
+      } satisfies RelativeStrength;
+    },
+    () =>
+      getMockRelativeStrength(normalized, {
+        market: opts.market,
+        quoteChangePercent: opts.quoteChangePercent ?? null,
+      }),
+  );
+}
+
+/** Signed percent-point difference with null-safe semantics + 2-decimal rounding. */
+function diffPct(a: number | null, b: number | null): number | null {
+  if (a == null || b == null) return null;
+  return +(a - b).toFixed(2);
 }

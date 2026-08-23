@@ -4,15 +4,18 @@ import {
   getPriceRange52W,
   getPriceSeries,
   getQuote,
+  getRelativeStrength,
   getStockAnalytics,
   getStockDetail,
   getStockFundamentals,
+  getVolumeSeries,
 } from '@/lib/stocks/queries';
 import { extractMaSeries } from '@/lib/format/ma';
 import { AnalyticsPanel } from '@/components/stocks/AnalyticsPanel';
 import { KeyStats } from '@/components/stocks/KeyStats';
 import { PriceChart } from '@/components/stocks/PriceChart';
 import { StockHeader } from '@/components/stocks/StockHeader';
+import { StockTabs } from '@/components/stocks/tabs/StockTabs';
 
 interface StockPageProps {
   params: Promise<{ locale: string; symbol: string }>;
@@ -28,7 +31,7 @@ export default async function StockPage({ params }: StockPageProps) {
   const t = await getTranslations('stock');
 
   const decodedSymbol = decodeURIComponent(symbol);
-  const [detailRes, quoteRes, seriesRes, fundamentalsRes, rangeRes, analyticsRes] =
+  const [detailRes, quoteRes, seriesRes, fundamentalsRes, rangeRes, analyticsRes, volumeRes] =
     await Promise.all([
       getStockDetail(decodedSymbol),
       getQuote(decodedSymbol),
@@ -37,6 +40,7 @@ export default async function StockPage({ params }: StockPageProps) {
       getPriceRange52W(decodedSymbol),
       // Window matches the price series so the MA overlays span the full chart.
       getStockAnalytics(decodedSymbol, { days: CHART_DAYS }),
+      getVolumeSeries(decodedSymbol, { days: CHART_DAYS }),
     ]);
 
   const stock = detailRes.data;
@@ -47,8 +51,17 @@ export default async function StockPage({ params }: StockPageProps) {
   const fundamentals = fundamentalsRes.data;
   const range52W = rangeRes.data;
   const analyticsSeries = analyticsRes.data;
+  const volume = volumeRes.data;
   const latestAnalytics = analyticsSeries[analyticsSeries.length - 1] ?? null;
   const maSeries = extractMaSeries(analyticsSeries);
+
+  // RS depends on stock.market (only known after detailRes) — fetch
+  // sequentially after the parallel block.
+  const rsRes = await getRelativeStrength(decodedSymbol, {
+    market: stock.market,
+    quoteChangePercent: quote?.changePercent ?? null,
+  });
+  const rs = rsRes.data;
 
   return (
     <div className="mx-auto max-w-screen-xl px-4 py-6 sm:px-6 lg:py-8">
@@ -83,20 +96,14 @@ export default async function StockPage({ params }: StockPageProps) {
 
         <AnalyticsPanel currency={stock.currency} analytics={latestAnalytics} />
 
-        <section className="rounded-md border border-border bg-bg-elevated p-5">
-          <h2 className="text-sm font-semibold text-fg">{t('tabsTitle')}</h2>
-          <ul className="mt-3 grid grid-cols-2 gap-2 text-xs text-fg-muted sm:grid-cols-4">
-            <li>{t('tab.overview')}</li>
-            <li>{t('tab.technical')}</li>
-            <li>{t('tab.volume')}</li>
-            <li>{t('tab.relativeStrength')}</li>
-            <li>{t('tab.shortSelling')}</li>
-            <li>{t('tab.volatility')}</li>
-            <li>{t('tab.news')}</li>
-            <li>{t('tab.ai')}</li>
-          </ul>
-          <p className="mt-4 text-xs text-fg-subtle">{t('tabsPhase1Note')}</p>
-        </section>
+        <StockTabs
+          symbol={stock.symbol}
+          currency={stock.currency}
+          volume={volume}
+          latestAnalytics={latestAnalytics}
+          rs={rs}
+          quote={quote}
+        />
       </div>
     </div>
   );

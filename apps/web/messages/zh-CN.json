@@ -93,7 +93,6 @@
     "dividendYield": "股息率",
     "dayRange": "今日波幅",
     "fiftyTwoWeekRange": "52周波幅",
-    "volume": "成交量",
     "avgVolume": "平均成交量",
     "sharesOutstanding": "流通股数",
     "lastPrice": "最新价",
@@ -144,6 +143,46 @@
       "ma20": "均线(20)",
       "ma50": "均线(50)",
       "ma200": "均线(200)"
+    },
+    "comingSoon": {
+      "value": "即将推出",
+      "note": "此区块将于后续阶段推出。"
+    },
+    "volumePanel": {
+      "panelTitle": "成交量",
+      "headline": "今日成交量对 30 日均量",
+      "latestVolume": "最新成交量",
+      "avg30d": "30 日均量",
+      "avg90d": "90 日均量",
+      "maxInWindow": "窗口最高",
+      "maxDate": "日期 {date}",
+      "avgVolume20": "20 日均量",
+      "note": "由每日数据聚合,周末会略过。"
+    },
+    "volatilityPanel": {
+      "panelTitle": "波动率",
+      "headline": "30 日年化波动率",
+      "volatility30d": "年化波动率",
+      "maxDrawdown30d": "30 日最大回撤",
+      "regimeLabel": {
+        "low": "低",
+        "mid": "中",
+        "high": "高"
+      },
+      "note": "回报采用滚动窗口计算,负值会显示为负号。"
+    },
+    "relativeStrengthPanel": {
+      "panelTitle": "相对强弱对 {indexName}",
+      "indexHeader": "基准指数",
+      "indexChange": "{indexName} · 今日 {pct}",
+      "rsNote": "今日相对强弱 = 个股今日涨跌 − 指数今日涨跌。基准指数尚未储存分区历史,1 个月 / 3 个月 / 6 个月 / 1 年仅显示个股回报,不作比较。",
+      "sparklineNote": "仅含今日样本",
+      "sessionRsLabel": "今日相对强弱",
+      "sessionRsVs": "个股 {stockPct} − {indexName} {indexPct}",
+      "stockReturn1m": "1 个月回报",
+      "stockReturn3m": "3 个月回报",
+      "stockReturn6m": "6 个月回报",
+      "stockReturn1y": "1 年回报"
     }
   },
   "admin": {

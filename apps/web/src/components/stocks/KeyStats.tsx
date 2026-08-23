@@ -39,7 +39,7 @@ export async function KeyStats({ currency, fundamentals, range52W }: KeyStatsPro
     { label: t('pe'), value: fundamentals?.peRatio == null ? '—' : fundamentals.peRatio.toFixed(2) },
     { label: t('dividendYield'), value: fmtPct(fundamentals?.dividendYield ?? null) },
     { label: t('fiftyTwoWeekRange'), value: fmtPriceRange(range52W.low, range52W.high) },
-    { label: t('volume'), value: formatVolume(fundamentals?.sharesOutstanding ?? null, locale) },
+    { label: t('avgVolume'), value: formatVolume(fundamentals?.sharesOutstanding ?? null, locale) },
     { label: t('sharesOutstanding'), value: fmtShares(fundamentals?.sharesOutstanding ?? null) },
   ];
 

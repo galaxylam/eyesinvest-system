@@ -93,7 +93,6 @@
     "dividendYield": "股息率",
     "dayRange": "今日波幅",
     "fiftyTwoWeekRange": "52週波幅",
-    "volume": "成交量",
     "avgVolume": "平均成交量",
     "sharesOutstanding": "流通股數",
     "lastPrice": "最新價",
@@ -144,6 +143,46 @@
       "ma20": "均線(20)",
       "ma50": "均線(50)",
       "ma200": "均線(200)"
+    },
+    "comingSoon": {
+      "value": "即將推出",
+      "note": "此區塊將於後續階段推出。"
+    },
+    "volumePanel": {
+      "panelTitle": "成交量",
+      "headline": "今日成交量對 30 日均量",
+      "latestVolume": "最新成交量",
+      "avg30d": "30 日均量",
+      "avg90d": "90 日均量",
+      "maxInWindow": "窗口最高",
+      "maxDate": "日期 {date}",
+      "avgVolume20": "20 日均量",
+      "note": "由每日資料聚合,週末會略過。"
+    },
+    "volatilityPanel": {
+      "panelTitle": "波動率",
+      "headline": "30 日年化波動率",
+      "volatility30d": "年化波動率",
+      "maxDrawdown30d": "30 日最大回撤",
+      "regimeLabel": {
+        "low": "低",
+        "mid": "中",
+        "high": "高"
+      },
+      "note": "回報採用滾動窗口計算,負值會顯示為負號。"
+    },
+    "relativeStrengthPanel": {
+      "panelTitle": "相對強弱對 {indexName}",
+      "indexHeader": "基準指數",
+      "indexChange": "{indexName} · 今日 {pct}",
+      "rsNote": "今日相對強弱 = 個股今日漲跌 − 指數今日漲跌。基準指數尚未儲存分區歷史,1 個月 / 3 個月 / 6 個月 / 1 年僅顯示個股回報,不作比較。",
+      "sparklineNote": "僅含今日樣本",
+      "sessionRsLabel": "今日相對強弱",
+      "sessionRsVs": "個股 {stockPct} − {indexName} {indexPct}",
+      "stockReturn1m": "1 個月回報",
+      "stockReturn3m": "3 個月回報",
+      "stockReturn6m": "6 個月回報",
+      "stockReturn1y": "1 年回報"
     }
   },
   "admin": {
