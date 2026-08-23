@@ -1,13 +1,14 @@
 # EyesInvest — yfinance sync worker
 
-Pulls daily OHLC bars, quote snapshots, and fundamentals from Yahoo Finance
-into Supabase. Phase 2 v1 ships daily bars only — minute bars are deferred.
+Pulls daily OHLC bars, quote snapshots, fundamentals, technical analytics,
+index quotes, and US short-selling data into Supabase. Each sync command
+is independent so you can run them on different cadences.
 
 ## Prerequisites
 
 - Python 3.12 (managed by [uv](https://docs.astral.sh/uv/))
-- A Supabase project with the Phase 2 schema applied (run
-  `local/supabase/setup.sql` in the dashboard SQL Editor)
+- A Supabase project with the schema applied (run `local/supabase/setup.sql`
+  in the dashboard SQL Editor)
 - The service-role key from `Project Settings → API`
 
 ## Install
@@ -32,6 +33,9 @@ uv run python -m eyesinvest_worker all
 uv run python -m eyesinvest_worker sync-prices
 uv run python -m eyesinvest_worker sync-quotes
 uv run python -m eyesinvest_worker sync-fundamentals
+uv run python -m eyesinvest_worker sync-analytics
+uv run python -m eyesinvest_worker sync-indexes
+uv run python -m eyesinvest_worker sync-shorts   # see SYNC_SHORTS.md
 ```
 
 Convenience from repo root: `pnpm worker:sync` (= `cd workers/yfinance && uv run python -m eyesinvest_worker all`).
@@ -43,6 +47,9 @@ Convenience from repo root: `pnpm worker:sync` (= `cd workers/yfinance && uv run
 | `sync-prices` | `ey_price_1d` | 2-year daily OHLC per active stock |
 | `sync-quotes` | `ey_quote_snapshot` | Latest close + previous close + change % |
 | `sync-fundamentals` | `ey_stocks` | `market_cap`, `pe_ratio`, `dividend_yield`, 52-wk range, etc. |
+| `sync-analytics` | `ey_stock_analytics` | MA / RSI / MACD / volatility / drawdown / returns |
+| `sync-indexes` | `ey_index_quote` | Latest SPX + HSI daily quotes |
+| `sync-shorts` | `ey_short_sale_1d`, `ey_short_interest` | US-only FINRA short-selling (see `SYNC_SHORTS.md`) |
 | `all` | all of the above | Sequential |
 
 ## Scheduling

@@ -20,6 +20,16 @@ class WorkerConfig(BaseSettings):
     supabase_service_role_key: str = Field(..., alias="SUPABASE_SERVICE_ROLE_KEY")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
+    # FINRA Developer API — both optional; sync-shorts falls back to the
+    # public CDN when either is missing.
+    finra_api_client_id: str | None = Field(default=None, alias="FINRA_API_CLIENT_ID")
+    finra_api_secret: str | None = Field(default=None, alias="FINRA_API_SECRET")
+    # How many trailing calendar days of `regShoDaily` to pull per ticker.
+    # 90 ≈ three months of trading days, enough for the 3M picker window.
+    # 1 ticker × 90 days = ~63 rows, well under FINRA's 5,000-row per-call
+    # cap. Bump if you want a longer daily bar history on the chart.
+    short_sale_history_days: int = Field(default=90, alias="SHORT_SALE_HISTORY_DAYS")
+
     # How long to pause between ticker fetches, in seconds.
     price_throttle_seconds: float = 0.5
     info_throttle_seconds: float = 1.0

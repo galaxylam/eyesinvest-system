@@ -152,6 +152,62 @@ export interface CrowdedRatio {
   asOfDate: string | null;
 }
 
+// ============================================================================
+// Short Selling (FINRA) — US-only. HK stocks short-circuit upstream to null.
+// ============================================================================
+
+/**
+ * One bar on the daily Reg-SHO chart.
+ *   shortPctOfVolume = short_volume / total_volume × 100
+ */
+export interface ShortSellingPoint {
+  date: string;
+  /** shortVolume / totalVolume × 100. Null when totalVolume is 0. */
+  shortPctOfVolume: number | null;
+  /** FINRA-reported short volume (shares). */
+  shortVolume: number;
+  /** FINRA-reported total volume (shares). */
+  totalVolume: number;
+}
+
+/** One bi-weekly settlement point from FINRA short-interest. */
+export interface ShortInterestPoint {
+  date: string;
+  /** Shares sold short outstanding at settlement date. */
+  shortInterest: number;
+  /** Change vs prior settlement (signed %). */
+  changePct: number | null;
+  /** shortInterest ÷ avg_daily_volume_30d. Null when avg volume is 0. */
+  daysToCover: number | null;
+}
+
+/**
+ * Combined US short-selling payload for the subplot. The header pills surface
+ * `todayShortPctOfVolume` + `todayShortVolume` (daily KPIs) plus
+ * `shortInterest` + change + daysToCover (bi-weekly KPIs). The chart renders
+ * the bi-weekly short-interest line only; the daily series drives the
+ * pills and is kept so the caller can chart it elsewhere later.
+ */
+export interface ShortSelling {
+  symbol: string;
+  market: Market;
+  /** Latest daily short % of FINRA volume. Null when no daily data. */
+  todayShortPctOfVolume: number | null;
+  /** Latest daily short-volume amount in shares. Null when no daily data. */
+  todayShortVolume: number | null;
+  /** Latest short interest (shares outstanding). Null when no bi-weekly data. */
+  shortInterest: number | null;
+  /** Change vs prior settlement, signed percent. Null when no prior. */
+  shortInterestChangePct: number | null;
+  /** Latest short interest ÷ 30-day avg daily volume (trading days). Null when avg is 0. */
+  daysToCover: number | null;
+  asOfDate: string | null;
+  series: {
+    sale: ShortSellingPoint[];
+    interest: ShortInterestPoint[];
+  };
+}
+
 export interface ScreenerRow {
   symbol: string;
   name: string;

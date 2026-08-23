@@ -90,3 +90,28 @@ class IndexQuote(BaseModel):
     previous_close: float
     as_of: date
     source: str = "yfinance"
+
+
+class ShortSaleRow(BaseModel):
+    """One row of `ey_short_sale_1d` (FINRA Reg-SHO daily)."""
+
+    stock_id: str
+    trade_date: date
+    market: Literal["US"] = "US"
+    short_volume: int
+    short_exempt_volume: int = 0
+    total_volume: int
+    source: str = "finra"
+
+
+class ShortInterestRow(BaseModel):
+    """One row of `ey_short_interest` (FINRA bi-weekly)."""
+
+    stock_id: str
+    settlement_date: date
+    market: Literal["US"] = "US"
+    short_interest: int
+    days_to_cover: float | None = None
+    prior_short_interest: int | None = None
+    change_pct: float | None = None
+    source: str = "finra"

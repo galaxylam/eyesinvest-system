@@ -18,6 +18,8 @@ from eyesinvest_worker.db import (
     upsert_index_quotes,
     upsert_price_bars,
     upsert_quote_snapshot,
+    upsert_short_interest,
+    upsert_short_sales,
 )
 from eyesinvest_worker.log import configure_logging, logger
 from eyesinvest_worker.models import Fundamentals, IndexQuote
@@ -27,6 +29,14 @@ from eyesinvest_worker.providers import (
     fetch_fundamentals,
     fetch_index_quote,
     fetch_quote_snapshot,
+    sync_short_interest,
+    sync_short_sales,
+)
+from eyesinvest_worker.providers.finra_api import (
+    FinraApiError,
+    FinraClient,
+    sync_short_interest_via_api,
+    sync_short_sales_via_api,
 )
 
 # Stable iteration order so the `all` command is reproducible.
@@ -174,15 +184,65 @@ def sync_indexes() -> None:
     logger.info(f"sync-indexes done — {len(quotes)} index rows written")
 
 
+@main.command("sync-shorts")
+def sync_shorts() -> None:
+    """Pull FINRA daily Reg-SHO + bi-weekly short-interest for US stocks.
+
+    Prefers the authenticated Developer API (`regShoDaily` +
+    `consolidatedShortInterest`) when FINRA_API_CLIENT_ID + SECRET are set;
+    otherwise falls back to the public CDN TXT files. HK stocks are skipped
+    (FINRA is US-only). Failures are logged + skipped rather than aborting
+    the run.
+    """
+    cfg = _load_config()
+    configure_logging(cfg.log_level)
+    client = make_client(cfg.supabase_url, cfg.supabase_service_role_key)
+    stocks = fetch_active_stocks(client)
+    us_stocks = [s for s in stocks if s.market == "US"]
+    symbol_map = {s.symbol: s.id for s in us_stocks}
+    logger.info(f"syncing FINRA short-selling for {len(us_stocks)} US stocks")
+
+    use_api = bool(cfg.finra_api_client_id and cfg.finra_api_secret)
+    sales: list = []
+    interest: list = []
+    days = cfg.short_sale_history_days
+
+    if use_api:
+        logger.info("using authenticated FINRA Developer API")
+        api = FinraClient(cfg.finra_api_client_id or "", cfg.finra_api_secret or "")
+        try:
+            sales = sync_short_sales_via_api(api, symbol_map, days=days)
+            interest = sync_short_interest_via_api(api, symbol_map)
+        except FinraApiError as exc:
+            logger.warning(
+                f"FINRA API path failed ({exc}); falling back to public CDN"
+            )
+            sales = sync_short_sales(client, symbol_map, days=days)
+            time.sleep(cfg.price_throttle_seconds)
+            interest = sync_short_interest(client, symbol_map, lookback_days=60)
+    else:
+        logger.info("FINRA_API_CLIENT_ID/SECRET not set; using public CDN")
+        sales = sync_short_sales(client, symbol_map, days=days)
+        time.sleep(cfg.price_throttle_seconds)
+        interest = sync_short_interest(client, symbol_map, lookback_days=60)
+
+    sales_written = upsert_short_sales(client, sales)
+    interest_written = upsert_short_interest(client, interest)
+    logger.info(
+        f"sync-shorts done — {sales_written} daily + {interest_written} bi-weekly rows"
+    )
+
+
 @main.command("all")
 def sync_all() -> None:
-    """Run every sync command in sequence: prices → quotes → fundamentals → analytics → indexes."""
+    """Run every sync command in sequence: prices → quotes → fundamentals → analytics → indexes → shorts."""
     for cmd in (
         "sync-prices",
         "sync-quotes",
         "sync-fundamentals",
         "sync-analytics",
         "sync-indexes",
+        "sync-shorts",
     ):
         logger.info(f"=== {cmd} ===")
         # Re-invoke this CLI as a subprocess so config + logging re-init cleanly.

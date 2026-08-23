@@ -9,6 +9,8 @@ from eyesinvest_worker.db.supabase import (
     upsert_index_quotes,
     upsert_price_bars,
     upsert_quote_snapshot,
+    upsert_short_interest,
+    upsert_short_sales,
 )
 
 __all__ = [
@@ -20,4 +22,6 @@ __all__ = [
     "upsert_index_quotes",
     "upsert_price_bars",
     "upsert_quote_snapshot",
+    "upsert_short_interest",
+    "upsert_short_sales",
 ]

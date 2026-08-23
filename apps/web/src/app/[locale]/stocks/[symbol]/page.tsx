@@ -6,6 +6,7 @@ import {
   getPriceSeries,
   getQuote,
   getRelativeStrength,
+  getShortSelling,
   getStockAnalytics,
   getStockDetail,
   getStockFundamentals,
@@ -64,6 +65,7 @@ export default async function StockPage({ params, searchParams }: StockPageProps
     volumeRes,
     volumeEfficiencyRes,
     crowdedRatioRes,
+    shortSellingRes,
   ] = await Promise.all([
     getStockDetail(decodedSymbol),
     getQuote(decodedSymbol),
@@ -77,6 +79,8 @@ export default async function StockPage({ params, searchParams }: StockPageProps
     getVolumeEfficiency(decodedSymbol, { days: CHART_DAYS }),
     // Full 3y window so the sub-chart covers any range-picker setting (1M…3Y).
     getCrowdedRatio(decodedSymbol, { days: CHART_DAYS }),
+    // FINRA: short-circuit upstream to null for HK stocks.
+    getShortSelling(decodedSymbol, { days: CHART_DAYS }),
   ]);
 
   const stock = detailRes.data;
@@ -90,6 +94,7 @@ export default async function StockPage({ params, searchParams }: StockPageProps
   const volume = volumeRes.data;
   const volumeEfficiency = volumeEfficiencyRes.data;
   const crowdedRatio = crowdedRatioRes.data;
+  const shortSelling = shortSellingRes.data;
   const latestAnalytics = analyticsSeries[analyticsSeries.length - 1] ?? null;
   const maSeries = extractMaSeries(analyticsSeries);
 
@@ -138,6 +143,7 @@ export default async function StockPage({ params, searchParams }: StockPageProps
           maSeries={maSeries}
           volumeEfficiency={volumeEfficiency}
           crowdedRatio={crowdedRatio}
+          shortSelling={shortSelling}
           visibleDays={RANGE_DAYS[currentRange]}
         />
 

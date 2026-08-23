@@ -3,10 +3,11 @@
 import { useMemo } from 'react';
 import type { MaSeries } from '@/lib/format/ma';
 import type { PriceBar } from '@eyesinvest/types';
-import type { CrowdedRatio, VolumeEfficiency } from '@/lib/stocks/queries';
+import type { CrowdedRatio, ShortSelling, VolumeEfficiency } from '@/lib/stocks/queries';
 import { PriceChart } from './PriceChart';
 import { VolumeEfficiencyChart } from './VolumeEfficiencyChart';
 import { CrowdedRatioChart } from './CrowdedRatioChart';
+import { ShortSellingChart } from './ShortSellingChart';
 
 interface StockChartStackProps {
   symbol: string;
@@ -14,10 +15,12 @@ interface StockChartStackProps {
   maSeries?: MaSeries;
   volumeEfficiency: VolumeEfficiency | null;
   crowdedRatio: CrowdedRatio | null;
+  /** FINRA short-selling payload. US-only; null for HK and un-shipped data. */
+  shortSelling: ShortSelling | null;
   /**
    * How many trailing trading days the visible window should span.
    * Driven by the Range picker (1M=21 / 3M=63 / 6M=126 / 1Y=252 /
-   * 3Y=756). All three charts read this single source of truth, so the
+   * 3Y=756). All four charts read this single source of truth, so the
    * user can never drag one out of sync with the others.
    */
   visibleDays: number;
@@ -44,13 +47,14 @@ export function StockChartStack({
   maSeries,
   volumeEfficiency,
   crowdedRatio,
+  shortSelling,
   visibleDays,
   chartHeight = 360,
   subchartHeight = 180,
 }: StockChartStackProps) {
   // Convert trailing-N-days into an absolute {from, to} range pinned
   // to the last data point in each sub-chart's series. This is the
-  // single source of truth that both sub-charts apply via
+  // single source of truth that all sub-charts apply via
   // `setVisibleRange()` on mount and whenever visibleDays changes.
   const visibleRange = useMemo<
     { from: string; to: string } | null
@@ -58,6 +62,8 @@ export function StockChartStack({
     const candidates = [
       ...(volumeEfficiency?.series ?? []).map((p) => p.date),
       ...(crowdedRatio?.series ?? []).map((p) => p.date),
+      ...(shortSelling?.series.sale ?? []).map((p) => p.date),
+      ...(shortSelling?.series.interest ?? []).map((p) => p.date),
     ];
     if (candidates.length === 0) return null;
     const sorted = [...new Set(candidates)].sort();
@@ -66,7 +72,7 @@ export function StockChartStack({
     const cutoff = sorted[Math.max(0, sorted.length - visibleDays)];
     if (!cutoff) return null;
     return { from: cutoff, to: last };
-  }, [volumeEfficiency?.series, crowdedRatio?.series, visibleDays]);
+  }, [volumeEfficiency?.series, crowdedRatio?.series, shortSelling?.series, visibleDays]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -84,6 +90,11 @@ export function StockChartStack({
       />
       <CrowdedRatioChart
         data={crowdedRatio}
+        height={subchartHeight}
+        visibleRange={visibleRange}
+      />
+      <ShortSellingChart
+        data={shortSelling}
         height={subchartHeight}
         visibleRange={visibleRange}
       />

@@ -215,6 +215,20 @@
       "ma50": "均線(50)",
       "ma200": "均線(200)"
     },
+    "charts": {
+      "shortSelling": {
+        "title": "放空分析",
+        "subtitle": "雙週放空持倉，與主圖時間區間同步",
+        "today": "今日 %",
+        "dailyAmount": "今日量",
+        "shortInt": "放空持倉",
+        "change": "較前期",
+        "elevated": "偏高",
+        "normal": "正常",
+        "empty": "放空資料僅適用於美股。",
+        "noFloat": "尚未有 FINRA 資料。"
+      }
+    },
     "chartRange": {
       "label": "圖表區間",
       "1M": "1 個月",

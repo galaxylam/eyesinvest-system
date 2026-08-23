@@ -215,6 +215,20 @@
       "ma50": "MA(50)",
       "ma200": "MA(200)"
     },
+    "charts": {
+      "shortSelling": {
+        "title": "Short selling",
+        "subtitle": "Bi-weekly short interest synced with the main chart's range",
+        "today": "Today %",
+        "dailyAmount": "Today vol",
+        "shortInt": "Short int",
+        "change": "Δ from prior",
+        "elevated": "Elevated",
+        "normal": "Normal",
+        "empty": "Short-selling data is only available for US-listed stocks.",
+        "noFloat": "No FINRA data yet."
+      }
+    },
     "chartRange": {
       "label": "Chart range",
       "1M": "1M",

@@ -215,6 +215,20 @@
       "ma50": "均线(50)",
       "ma200": "均线(200)"
     },
+    "charts": {
+      "shortSelling": {
+        "title": "做空分析",
+        "subtitle": "双周做空持仓，与主图时间区间同步",
+        "today": "今日 %",
+        "dailyAmount": "今日量",
+        "shortInt": "做空持仓",
+        "change": "较前期",
+        "elevated": "偏高",
+        "normal": "正常",
+        "empty": "做空数据仅适用于美股。",
+        "noFloat": "尚无 FINRA 数据。"
+      }
+    },
     "chartRange": {
       "label": "图表区间",
       "1M": "1 个月",

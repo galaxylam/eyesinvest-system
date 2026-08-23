@@ -12,6 +12,8 @@ from eyesinvest_worker.models import (
     IndexQuote,
     PriceBar,
     QuoteSnapshot,
+    ShortInterestRow,
+    ShortSaleRow,
     StockAnalyticsRow,
     StockRecord,
 )
@@ -145,4 +147,38 @@ def upsert_index_quotes(client: Client, quotes: list[IndexQuote]) -> int:
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"index {q.code}: upsert failed: {exc}")
     logger.info(f"upserted {written} rows into ey_index_quote")
+    return written
+
+
+def upsert_short_sales(client: Client, rows: list[ShortSaleRow]) -> int:
+    """Upsert FINRA daily Reg-SHO rows. PK conflict on (stock_id, trade_date)."""
+    if not rows:
+        return 0
+    payload = [r.model_dump(mode="json") for r in rows]
+    written = 0
+    for chunk in _chunks(payload, 500):
+        resp = (
+            client.table("ey_short_sale_1d")
+            .upsert(chunk, on_conflict="stock_id,trade_date")
+            .execute()
+        )
+        written += len(resp.data or chunk)
+    logger.info(f"upserted {written} rows into ey_short_sale_1d")
+    return written
+
+
+def upsert_short_interest(client: Client, rows: list[ShortInterestRow]) -> int:
+    """Upsert FINRA bi-weekly short-interest rows. PK conflict on (stock_id, settlement_date)."""
+    if not rows:
+        return 0
+    payload = [r.model_dump(mode="json") for r in rows]
+    written = 0
+    for chunk in _chunks(payload, 500):
+        resp = (
+            client.table("ey_short_interest")
+            .upsert(chunk, on_conflict="stock_id,settlement_date")
+            .execute()
+        )
+        written += len(resp.data or chunk)
+    logger.info(f"upserted {written} rows into ey_short_interest")
     return written

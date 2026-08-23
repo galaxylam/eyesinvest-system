@@ -21,6 +21,7 @@ import {
   getMockQuote,
   getMockRelativeStrength,
   getMockScreenerRows,
+  getMockShortSelling,
   getMockStockDetail,
   getMockTopMoversWithChange,
   getMockVolumeEfficiency,
@@ -39,6 +40,9 @@ import type {
   ScreenerRow,
   ScreenerSort,
   ScreenerSortColumn,
+  ShortInterestPoint,
+  ShortSelling,
+  ShortSellingPoint,
   StockDetail,
   StockSearchResult,
   VolumeAggregates,
@@ -56,6 +60,9 @@ export type {
   ScreenerRow,
   ScreenerSort,
   ScreenerSortColumn,
+  ShortInterestPoint,
+  ShortSelling,
+  ShortSellingPoint,
   VolumeAggregates,
   VolumeEfficiency,
   VolumeSeries,
@@ -1160,4 +1167,144 @@ function applyScreenerSort(rows: ScreenerRow[], s: ScreenerSort): ScreenerRow[] 
     }
     return String(av).localeCompare(String(bv)) * dir;
   });
+}
+
+// ============================================================================
+// Phase 5 — Short Selling (FINRA, US-only). HK stocks short-circuit upstream
+// at the row-lookup boundary so the chart can show its empty state.
+// ============================================================================
+
+/**
+ * US short-selling payload: daily Reg-SHO volume + bi-weekly short interest.
+ * Joins `ey_short_sale_1d` and `ey_short_interest` against the stock id, then
+ * computes `daysToCover` locally from the last 30 days of `ey_price_1d`
+ * volume (we don't trust FINRA's own days-to-cover column).
+ *
+ * Returns `null` immediately when the stock is HK — keeps the caller free of
+ * market branching.
+ */
+export async function getShortSelling(
+  symbol: string,
+  opts: { days?: number } = {},
+): Promise<QueryResult<ShortSelling | null>> {
+  const normalized = symbol.toUpperCase();
+  const days = opts.days ?? 252;
+  return withFallback(
+    async (supabase) => {
+      const { data: stockRow, error: stockErr } = await supabase
+        .from('ey_stocks')
+        .select('id, symbol, market')
+        .eq('symbol', normalized)
+        .maybeSingle();
+      if (stockErr) throw stockErr;
+      if (!stockRow) return null;
+      // US-only — keep HK fast.
+      if (stockRow.market !== 'US') return null;
+
+      const stockId = stockRow.id;
+
+      // Three parallel reads: daily Reg-SHO + bi-weekly interest + 30d
+      // volume for days-to-cover.
+      const [saleRes, interestRes, volumeRes] = await Promise.all([
+        supabase
+          .from('ey_short_sale_1d')
+          .select('trade_date, short_volume, total_volume')
+          .eq('stock_id', stockId)
+          .order('trade_date', { ascending: false })
+          .limit(days),
+        supabase
+          .from('ey_short_interest')
+          .select('settlement_date, short_interest, prior_short_interest, change_pct')
+          .eq('stock_id', stockId)
+          .order('settlement_date', { ascending: false })
+          .limit(8),
+        supabase
+          .from('ey_price_1d')
+          .select('trade_date, volume')
+          .eq('stock_id', stockId)
+          .order('trade_date', { ascending: false })
+          .limit(30),
+      ]);
+      if (saleRes.error) throw saleRes.error;
+      if (interestRes.error) throw interestRes.error;
+      if (volumeRes.error) throw volumeRes.error;
+
+      const num = (v: unknown): number | null =>
+        v == null ? null : Number(v);
+
+      const saleRaw = (saleRes.data ?? []) as Array<{
+        trade_date: string;
+        short_volume: number;
+        total_volume: number;
+      }>;
+      const interestRaw = (interestRes.data ?? []) as Array<{
+        settlement_date: string;
+        short_interest: number;
+        prior_short_interest: number | null;
+        change_pct: number | null;
+      }>;
+      const volumeRaw = (volumeRes.data ?? []) as Array<{
+        trade_date: string;
+        volume: number;
+      }>;
+
+      // Avg daily volume over last 30 trading days — used to compute
+      // days-to-cover locally. Guard against a degenerate 0-volume mean.
+      const avgDailyVolume30d = (() => {
+        if (volumeRaw.length === 0) return null;
+        const sum = volumeRaw.reduce((s, r) => s + Number(r.volume), 0);
+        return sum / volumeRaw.length;
+      })();
+
+      // Daily series (ascending for chart).
+      const sale: ShortSellingPoint[] = saleRaw
+        .map((r) => {
+          const total = Number(r.total_volume);
+          const short = Number(r.short_volume);
+          return {
+            date: r.trade_date,
+            shortVolume: short,
+            totalVolume: total,
+            shortPctOfVolume: total > 0 ? +((short / total) * 100).toFixed(2) : null,
+          };
+        })
+        .reverse();
+
+      // Bi-weekly series (ascending). `changePct` is stored directly by the
+      // worker; `daysToCover` is computed here so we don't trust the FINRA
+      // file's column.
+      const interest: ShortInterestPoint[] = interestRaw
+        .map((r) => {
+          const si = Number(r.short_interest);
+          return {
+            date: r.settlement_date,
+            shortInterest: si,
+            changePct: num(r.change_pct),
+            daysToCover:
+              avgDailyVolume30d != null && avgDailyVolume30d > 0
+                ? +(si / avgDailyVolume30d).toFixed(2)
+                : null,
+          };
+        })
+        .reverse();
+
+      const latestSale = sale[sale.length - 1];
+      const latestInterest = interest[interest.length - 1];
+      const asOfDate =
+        latestSale?.date ?? latestInterest?.date ?? null;
+
+      return {
+        symbol: stockRow.symbol,
+        market: stockRow.market as Market,
+        todayShortPctOfVolume: latestSale?.shortPctOfVolume ?? null,
+        todayShortVolume: latestSale?.shortVolume ?? null,
+        shortInterest: latestInterest?.shortInterest ?? null,
+        shortInterestChangePct: latestInterest?.changePct ?? null,
+        daysToCover: latestInterest?.daysToCover ?? null,
+        asOfDate,
+        series: { sale, interest },
+      } satisfies ShortSelling;
+    },
+    () => getMockShortSelling(normalized),
+  );
 }

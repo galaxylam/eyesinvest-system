@@ -3,6 +3,12 @@ doesn't import it directly."""
 
 from eyesinvest_worker.providers.analytics import compute_analytics
 from eyesinvest_worker.providers.indexes import fetch_index_quote
+from eyesinvest_worker.providers.shorts import (
+    fetch_finra_short_interest,
+    fetch_finra_short_sale,
+    sync_short_interest,
+    sync_short_sales,
+)
 from eyesinvest_worker.providers.yfinance import (
     fetch_daily_history,
     fetch_fundamentals,
@@ -12,7 +18,11 @@ from eyesinvest_worker.providers.yfinance import (
 __all__ = [
     "compute_analytics",
     "fetch_daily_history",
+    "fetch_finra_short_interest",
+    "fetch_finra_short_sale",
     "fetch_fundamentals",
     "fetch_index_quote",
     "fetch_quote_snapshot",
+    "sync_short_interest",
+    "sync_short_sales",
 ]

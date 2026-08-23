@@ -16,6 +16,9 @@ import type {
   EfficiencyPoint,
   RelativeStrength,
   ScreenerRow,
+  ShortInterestPoint,
+  ShortSelling,
+  ShortSellingPoint,
   StockDetail,
   StockSearchResult,
   VolumeAggregates,
@@ -708,6 +711,98 @@ export function getMockCrowdedRatio(symbol: string, days = 252): CrowdedRatio | 
     series,
     asOfDate: latest?.date ?? null,
   } satisfies CrowdedRatio;
+}
+
+// ============================================================================
+// Short Selling (FINRA, US-only). Mirrors the production query shape: daily
+// short % of volume + bi-weekly short interest. HK stocks short-circuit to
+// `null` so the chart can render its empty state — same behavior as
+// `getShortSelling` in queries.ts.
+// ============================================================================
+
+/**
+ * Mock short-selling payload. Uses the same seeded synthetic price series
+ * so the daily short % moves with whatever the symbol is being told.
+ * Returns `null` for HK tickers to match the upstream US-only short-circuit.
+ */
+export function getMockShortSelling(symbol: string): ShortSelling | null {
+  const detail = getMockStockDetail(symbol);
+  if (!detail) return null;
+  if (detail.market !== 'US') return null;
+
+  // 252 trading days so the chart always covers the longest picker window.
+  const bars = generateSyntheticPriceSeries(symbol, 252);
+  if (bars.length === 0) {
+    return {
+      symbol: detail.symbol,
+      market: detail.market,
+      todayShortPctOfVolume: null,
+      todayShortVolume: null,
+      shortInterest: null,
+      shortInterestChangePct: null,
+      daysToCover: null,
+      asOfDate: null,
+      series: { sale: [], interest: [] },
+    } satisfies ShortSelling;
+  }
+
+  // Per-day shortPctOfVolume derived from the symbol's seeded RNG so
+  // values are deterministic. We anchor on 30-50% — a believable range
+  // for active US equities — and let the seed drive the variance.
+  const rng = makeRng(symbolSeed(`${symbol}-shorts`));
+  const sale: ShortSellingPoint[] = bars.map((b) => {
+    const total = b.volume;
+    const pct = 30 + rng() * 20; // 30%–50% of volume is short
+    const short = Math.floor(total * (pct / 100));
+    return {
+      date: b.time,
+      shortVolume: short,
+      totalVolume: total,
+      shortPctOfVolume: total > 0 ? +pct.toFixed(2) : null,
+    };
+  });
+
+  // Bi-weekly settlements — pick every 10th bar as a settlement date so
+  // the chart always has ~25 short-interest points over a 252-day window.
+  const avgVol30 =
+    bars.slice(-30).reduce((s, b) => s + b.volume, 0) /
+    Math.max(1, Math.min(30, bars.length));
+  const interest: ShortInterestPoint[] = [];
+  let prevShortInterest: number | null = null;
+  for (let i = 9; i < bars.length; i += 10) {
+    const b = bars[i];
+    if (!b) continue;
+    // Synthetic short-interest ≈ 5% of cumulative volume over the
+    // settlement window — again seeded for determinism.
+    const seedRng = makeRng(symbolSeed(`${symbol}-si-${i}`));
+    const shortInterest = Math.floor(avgVol30 * (4 + seedRng() * 3));
+    const changePct =
+      prevShortInterest != null && prevShortInterest > 0
+        ? +(((shortInterest - prevShortInterest) / prevShortInterest) * 100).toFixed(2)
+        : null;
+    interest.push({
+      date: b.time,
+      shortInterest,
+      changePct,
+      daysToCover: avgVol30 > 0 ? +(shortInterest / avgVol30).toFixed(2) : null,
+    });
+    prevShortInterest = shortInterest;
+  }
+
+  const latestSale = sale[sale.length - 1];
+  const latestInterest = interest[interest.length - 1];
+
+  return {
+    symbol: detail.symbol,
+    market: detail.market,
+    todayShortPctOfVolume: latestSale?.shortPctOfVolume ?? null,
+    todayShortVolume: latestSale?.shortVolume ?? null,
+    shortInterest: latestInterest?.shortInterest ?? null,
+    shortInterestChangePct: latestInterest?.changePct ?? null,
+    daysToCover: latestInterest?.daysToCover ?? null,
+    asOfDate: latestSale?.date ?? latestInterest?.date ?? null,
+    series: { sale, interest },
+  } satisfies ShortSelling;
 }
 
 // ============================================================================
