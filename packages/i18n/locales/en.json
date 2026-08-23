@@ -23,6 +23,7 @@
   },
   "nav": {
     "dashboard": "Dashboard",
+    "watchlist": "Watchlist",
     "search": "Search",
     "heatmap": "Heatmap",
     "rankings": "Rankings",
@@ -67,6 +68,23 @@
     "phaseNoteTitle": "Heads up",
     "phaseNoteBody": "Live daily prices via the yfinance worker. Technical indicators, relative-strength, and AI mapping arrive in later phases."
   },
+  "watchlist": {
+    "title": "Watchlist",
+    "subtitle": "Stocks you've saved, with live prices and signed change.",
+    "count": "{count, plural, =0 {No symbols saved} =1 {1 saved} other {{count} saved}}",
+    "clearAll": "Clear all",
+    "remove": "Remove {symbol}",
+    "removeTitle": "Remove from watchlist",
+    "unavailable": "Stock data unavailable",
+    "more": "more",
+    "viewAll": "View all",
+    "loading": "Loading watchlist",
+    "empty": {
+      "title": "No saved stocks yet",
+      "note": "Open any stock page and click the ☆ star to add it here. Your watchlist is stored locally in this browser.",
+      "cta": "Browse stocks"
+    }
+  },
   "search": {
     "title": "Search stocks",
     "subtitle": "Search by ticker, company name, or alias (Traditional / Simplified Chinese supported).",
@@ -108,6 +126,12 @@
     "phase1NoPrice": "Daily prices via yfinance worker.",
     "tabsTitle": "Stock analysis",
     "tabsPhase1Note": "Charts: real OHLC from the yfinance worker. Technical indicators, short-selling, AI events, and knowledge-base links arrive in later phases.",
+    "watchlist": {
+      "addToWatchlist": "Add {symbol} to watchlist",
+      "removeFromWatchlist": "Remove {symbol} from watchlist",
+      "saved": "Saved to watchlist",
+      "loading": "Loading watchlist"
+    },
     "tab": {
       "overview": "Overview",
       "chart": "Chart",

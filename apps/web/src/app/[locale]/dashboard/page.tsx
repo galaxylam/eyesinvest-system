@@ -5,6 +5,7 @@ import { MARKET_INDICES } from '@eyesinvest/types';
 import { getIndexQuotes, getTopMoversWithChange } from '@/lib/stocks/queries';
 import { SignedNumber } from '@/components/stocks/SignedNumber';
 import { formatSignedPercent } from '@/lib/format/quote';
+import { DashboardWatchlistCard } from '@/components/watchlist/DashboardWatchlistCard';
 
 interface DashboardProps {
   params: Promise<{ locale: string }>;
@@ -26,7 +27,7 @@ export default async function DashboardPage({ params }: DashboardProps) {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Suspense fallback={<CardSkeleton title={t('watchlist')} />}>
-          <WatchlistCard locale={locale} />
+          <DashboardWatchlistCard />
         </Suspense>
         <Suspense fallback={<CardSkeleton title={t('topMovers')} />}>
           <TopMoversCard locale={locale} />
@@ -55,21 +56,6 @@ function CardSkeleton({ title }: { title: string }) {
       </div>
       <span className="sr-only">{title}</span>
     </div>
-  );
-}
-
-async function WatchlistCard({ locale }: { locale: string }) {
-  const t = await getTranslations('dashboard');
-  return (
-    <Card title={t('watchlist')} subtitle={t('watchlistSubtitle')}>
-      <p className="text-sm text-fg-muted">{t('watchlistBody')}</p>
-      <Link
-        href={`/${locale}/search`}
-        className="mt-3 inline-flex items-center text-xs text-accent hover:underline"
-      >
-        {t('findStocks')} →
-      </Link>
-    </Card>
   );
 }
 

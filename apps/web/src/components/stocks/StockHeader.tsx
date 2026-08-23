@@ -3,6 +3,7 @@ import { formatPrice, formatSignedChange, formatSignedPercent, formatAsOf, forma
 import type { Quote } from '@eyesinvest/types';
 import { MarketStatusBadge } from './MarketStatusBadge';
 import { SignedNumber } from './SignedNumber';
+import { WatchlistButton } from './WatchlistButton';
 
 interface StockHeaderProps {
   symbol: string;
@@ -30,13 +31,14 @@ export async function StockHeader({
 
   return (
     <header className="flex flex-col gap-3 rounded-md border border-border bg-bg-elevated p-5">
-      <div className="flex flex-wrap items-baseline gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-semibold tracking-tight text-fg">
           {name}{' '}
           <span className="font-mono text-base font-medium text-fg-muted">
             {symbol}
           </span>
         </h1>
+        <WatchlistButton symbol={symbol} size="md" />
         <div className="flex items-center gap-2 text-xs text-fg-muted">
           <span className="rounded-md border border-border bg-bg-muted px-2 py-0.5">
             {market}

@@ -23,6 +23,7 @@
   },
   "nav": {
     "dashboard": "儀表板",
+    "watchlist": "自選股",
     "search": "搜尋",
     "heatmap": "熱力圖",
     "rankings": "排行榜",
@@ -67,6 +68,23 @@
     "phaseNoteTitle": "提醒",
     "phaseNoteBody": "每日行情由 yfinance 引擎提供。技術指標、相對強弱與 AI 分析將於後續階段加入。"
   },
+  "watchlist": {
+    "title": "自選股",
+    "subtitle": "已儲存的股票,顯示即時價格與漲跌。",
+    "count": "{count, plural, =0 {尚未儲存} =1 {1 個} other {{count} 個}}",
+    "clearAll": "全部移除",
+    "remove": "移除 {symbol}",
+    "removeTitle": "從自選股移除",
+    "unavailable": "股票資料不可用",
+    "more": "個更多",
+    "viewAll": "查看全部",
+    "loading": "載入自選股中",
+    "empty": {
+      "title": "尚未儲存任何股票",
+      "note": "在任何股票頁面點擊 ☆ 星號即可加入此處。自選股資料儲存於本機瀏覽器。",
+      "cta": "瀏覽股票"
+    }
+  },
   "search": {
     "title": "搜尋股票",
     "subtitle": "可使用股票代號、公司名稱或別名(支援繁體/簡體中文)進行搜尋。",
@@ -108,6 +126,12 @@
     "phase1NoPrice": "每日價格由 yfinance 引擎提供。",
     "tabsTitle": "股票分析",
     "tabsPhase1Note": "圖表:使用 yfinance 引擎提供的真實 OHLC 資料。技術指標、放空資料、AI 事件與知識庫連結將於後續階段接入。",
+    "watchlist": {
+      "addToWatchlist": "將 {symbol} 加入自選股",
+      "removeFromWatchlist": "從自選股移除 {symbol}",
+      "saved": "已加入自選股",
+      "loading": "載入自選股中"
+    },
     "tab": {
       "overview": "概覽",
       "chart": "圖表",
