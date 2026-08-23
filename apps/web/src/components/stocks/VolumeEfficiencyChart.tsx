@@ -215,9 +215,9 @@ export function VolumeEfficiencyChart({
           {avg30 != null && (
             <div className="flex items-baseline gap-1.5">
               <span className="inline-block h-2 w-2 rounded-sm bg-orange-400" aria-hidden />
-              <span className="text-2xs text-fg-subtle">30D Avg</span>
+              <span className="text-2xs text-fg-subtle">30D Turnover</span>
               <span className="tabular font-mono text-xs font-medium text-fg">
-                {avg30.toFixed(3)}×
+                {avg30.toFixed(3)}%
               </span>
             </div>
           )}
