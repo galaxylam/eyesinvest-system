@@ -66,6 +66,30 @@ export function VolumeEfficiencyChart({
         : data.turnoverPctToday / data.avgTurnoverPct30d
     : 0;
 
+  // Scope all stats to the visible picker window so the green/red bar
+  // averages always reflect "this 1M / 3M / 6M / 1Y / 3Y slice" rather
+  // than the full 3y series.
+  const windowed = useMemo(() => {
+    if (!visibleRange) return usable;
+    const { from, to } = visibleRange;
+    return usable.filter((p) => p.time >= from && p.time <= to);
+  }, [usable, visibleRange]);
+
+  // Mean efficiency of days where price closed up (green bars) and down
+  // (red bars). Returns null when there are no qualifying days in the
+  // visible window — e.g. a 1M window may have no down days.
+  const greenAvg = useMemo(() => {
+    const greens = windowed.filter((p) => p.change >= 0);
+    if (greens.length === 0) return null;
+    return greens.reduce((s, p) => s + p.value, 0) / greens.length;
+  }, [windowed]);
+
+  const redAvg = useMemo(() => {
+    const reds = windowed.filter((p) => p.change < 0);
+    if (reds.length === 0) return null;
+    return reds.reduce((s, p) => s + p.value, 0) / reds.length;
+  }, [windowed]);
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container || usable.length === 0) return;
@@ -208,6 +232,18 @@ export function VolumeEfficiencyChart({
             </div>
           )}
           <div className="flex items-baseline gap-2 border-l border-border pl-4">
+            <span className="text-2xs text-fg-subtle">Avg green</span>
+            <span className="tabular font-mono text-xs font-medium text-emerald-500">
+              {greenAvg != null ? `${greenAvg.toFixed(3)}×` : '—'}
+            </span>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xs text-fg-subtle">Avg red</span>
+            <span className="tabular font-mono text-xs font-medium text-rose-500">
+              {redAvg != null ? `${redAvg.toFixed(3)}×` : '—'}
+            </span>
+          </div>
+          <div className="hidden items-baseline gap-2 border-l border-border pl-4 sm:flex">
             <span className="text-2xs text-fg-subtle">Today</span>
             <span className={`tabular font-mono text-base font-semibold ${toneClass}`}>
               {formatRatio(eff)}
