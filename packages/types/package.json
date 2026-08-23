@@ -1,0 +1,19 @@
+{
+  "name": "@eyesinvest/types",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./database": "./src/database.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'no lint config in this package'",
+    "clean": "echo 'nothing to clean'"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

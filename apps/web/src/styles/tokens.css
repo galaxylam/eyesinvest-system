@@ -1,0 +1,42 @@
+/* EyesInvest design tokens — dark-first, light optional.
+   All tokens defined as RGB triplets so Tailwind's <alpha-value> works.
+   These are intentionally NOT wrapped in @layer base — Tailwind's layer
+   registration only happens when this file is bundled together with the
+   main globals.css that holds @tailwind base. */
+
+:root {
+  /* Dark theme (default) */
+  --bg: 9 11 14;
+  --bg-elevated: 18 22 28;
+  --bg-muted: 24 30 38;
+  --fg: 226 232 240;
+  --fg-muted: 148 163 184;
+  --fg-subtle: 100 116 139;
+  --border: 30 41 59;
+  --border-strong: 51 65 85;
+  --accent: 16 185 129;
+  --accent-fg: 6 23 19;
+  --positive: 16 185 129;
+  --negative: 244 63 94;
+  --warn: 245 158 11;
+  --info: 56 189 248;
+  color-scheme: dark;
+}
+
+:root.light {
+  --bg: 248 250 252;
+  --bg-elevated: 255 255 255;
+  --bg-muted: 241 245 249;
+  --fg: 15 23 42;
+  --fg-muted: 71 85 105;
+  --fg-subtle: 100 116 139;
+  --border: 226 232 240;
+  --border-strong: 203 213 225;
+  --accent: 5 150 105;
+  --accent-fg: 255 255 255;
+  --positive: 5 150 105;
+  --negative: 225 29 72;
+  --warn: 217 119 6;
+  --info: 2 132 199;
+  color-scheme: light;
+}

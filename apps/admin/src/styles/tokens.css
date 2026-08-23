@@ -1,0 +1,23 @@
+/* EyesInvest admin design tokens — dark-only.
+   RGB triplets so Tailwind's <alpha-value> works.
+   Intentionally NOT wrapped in @layer base — Tailwind's layer registration
+   only happens when this file is bundled with the globals.css that holds
+   the @tailwind base directive. */
+
+:root {
+  --bg: 9 11 14;
+  --bg-elevated: 18 22 28;
+  --bg-muted: 24 30 38;
+  --fg: 226 232 240;
+  --fg-muted: 148 163 184;
+  --fg-subtle: 100 116 139;
+  --border: 30 41 59;
+  --border-strong: 51 65 85;
+  --accent: 16 185 129;
+  --accent-fg: 6 23 19;
+  --positive: 16 185 129;
+  --negative: 244 63 94;
+  --warn: 245 158 11;
+  --info: 56 189 248;
+  color-scheme: dark;
+}

@@ -1,0 +1,63 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# Testing
+coverage/
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Next.js
+.next/
+out/
+
+# Production
+build/
+dist/
+
+# Misc
+.DS_Store
+*.pem
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local env files — keep .env.example, ignore everything else
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Turbo
+.turbo/
+
+# Supabase local
+local/supabase/.branches/
+local/supabase/.temp/
+local/supabase/.env
+
+# Generated types
+packages/types/src/database.ts.bak
+
+# Python (yfinance worker)
+workers/yfinance/.venv/
+workers/yfinance/.env
+workers/yfinance/__pycache__/
+workers/yfinance/**/__pycache__/
+workers/yfinance/*.egg-info/
+workers/yfinance/dist/
+workers/yfinance/build/
+
+# OS
+Thumbs.db

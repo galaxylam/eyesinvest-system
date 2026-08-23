@@ -1,0 +1,4 @@
+# Local Supabase temp/branches
+.branches/
+.temp/
+.env
