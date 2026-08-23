@@ -168,6 +168,14 @@
       "ma50": "MA(50)",
       "ma200": "MA(200)"
     },
+    "chartRange": {
+      "label": "Chart range",
+      "1M": "1M",
+      "3M": "3M",
+      "6M": "6M",
+      "1Y": "1Y",
+      "3Y": "3Y"
+    },
     "comingSoon": {
       "value": "Coming soon",
       "note": "This section ships in a later phase."

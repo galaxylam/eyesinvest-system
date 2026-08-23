@@ -14,23 +14,44 @@ import { extractMaSeries } from '@/lib/format/ma';
 import { AnalyticsPanel } from '@/components/stocks/AnalyticsPanel';
 import { KeyStats } from '@/components/stocks/KeyStats';
 import { PriceChart } from '@/components/stocks/PriceChart';
+import { RangePicker, type ChartRange } from '@/components/stocks/RangePicker';
 import { StockHeader } from '@/components/stocks/StockHeader';
 import { StockTabs } from '@/components/stocks/tabs/StockTabs';
 
 interface StockPageProps {
   params: Promise<{ locale: string; symbol: string }>;
+  searchParams: Promise<{ range?: string }>;
 }
 
 // ~3 years of trading days (3 * 252). Matches the worker's 3y history window
-// so the chart + MA overlays span the full price history.
+// so the chart + MA overlays always have the full history behind them, even
+// when the user picks a short visible range like 1M.
 const CHART_DAYS = 756;
 
-export default async function StockPage({ params }: StockPageProps) {
+// ?range= → visibleDays. Default '1Y' (= 252) so an unparameterized URL
+// behaves the same as today.
+const RANGE_DAYS: Record<ChartRange, number> = {
+  '1M': 21,
+  '3M': 63,
+  '6M': 126,
+  '1Y': 252,
+  '3Y': 756,
+};
+
+function parseRange(raw: string | undefined): ChartRange {
+  if (raw === '1M' || raw === '3M' || raw === '6M' || raw === '3Y') return raw;
+  return '1Y';
+}
+
+export default async function StockPage({ params, searchParams }: StockPageProps) {
   const { locale, symbol } = await params;
+  const { range } = await searchParams;
   setRequestLocale(locale);
   const t = await getTranslations('stock');
 
   const decodedSymbol = decodeURIComponent(symbol);
+  const currentRange = parseRange(range);
+
   const [detailRes, quoteRes, seriesRes, fundamentalsRes, rangeRes, analyticsRes, volumeRes] =
     await Promise.all([
       getStockDetail(decodedSymbol),
@@ -86,10 +107,15 @@ export default async function StockPage({ params }: StockPageProps) {
           quote={quote}
         />
 
+        <div className="flex items-center justify-end">
+          <RangePicker current={currentRange} />
+        </div>
+
         <PriceChart
           symbol={stock.symbol}
           series={series?.bars}
           maSeries={maSeries}
+          visibleDays={RANGE_DAYS[currentRange]}
         />
 
         <KeyStats currency={stock.currency} fundamentals={fundamentals} range52W={range52W} />

@@ -27,6 +27,13 @@ interface PriceChartProps {
    * (e.g. synthetic-only preview) no MA lines render.
    */
   maSeries?: MaSeries;
+  /**
+   * If set, the chart's time scale only shows the most recent `visibleDays`
+   * bars (e.g. 21 for 1M, 252 for 1Y). All MA data is still rendered so MA200
+   * stays meaningful within the visible window. When undefined the chart
+   * fits all available data.
+   */
+  visibleDays?: number;
 }
 
 const MA_COLORS: Record<MaKey, string> = {
@@ -59,6 +66,7 @@ export function PriceChart({
   height = 360,
   series,
   maSeries,
+  visibleDays,
 }: PriceChartProps) {
   const t = useTranslations('stock');
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -160,7 +168,22 @@ export function PriceChart({
 
     priceSeries.setData(candleData);
     if (volumeData.length > 0) volumeSeries.setData(volumeData);
-    chart.timeScale().fitContent();
+
+    // Default: fit everything. If the caller asked for a visible window
+    // (e.g. ?range=1M), constrain the time scale to the most recent N
+    // bars — but leave all data + MA values in place so the visible region
+    // is correctly rendered.
+    if (visibleDays && candleData.length > 0) {
+      const last = candleData[candleData.length - 1];
+      const first = candleData[Math.max(0, candleData.length - visibleDays)];
+      if (first && last) {
+        chart.timeScale().setVisibleRange({ from: first.time, to: last.time });
+      } else {
+        chart.timeScale().fitContent();
+      }
+    } else {
+      chart.timeScale().fitContent();
+    }
 
     chartRef.current = chart;
 
@@ -169,7 +192,7 @@ export function PriceChart({
       chartRef.current = null;
       maLineRefs.current = {};
     };
-  }, [symbol, height, series]);
+  }, [symbol, height, series, visibleDays]);
 
   // Toggle MA line data without recreating the chart.
   useEffect(() => {
