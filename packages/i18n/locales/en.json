@@ -25,6 +25,7 @@
     "dashboard": "Dashboard",
     "watchlist": "Watchlist",
     "search": "Search",
+    "screener": "Screener",
     "heatmap": "Heatmap",
     "rankings": "Rankings",
     "ai": "AI",
@@ -91,6 +92,40 @@
     "placeholder": "Search AAPL, Tencent, 騰訊…",
     "minChars": "Type at least 2 characters to search.",
     "noResults": "No stocks matched \"{query}\"."
+  },
+  "screener": {
+    "title": "Stock screener",
+    "subtitle": "Filter and sort the tracked universe by market, sector, market cap, valuation, yield, and momentum.",
+    "count": "Showing {count, plural, =0 {no stocks} one {1 stock} other {{count} stocks}}",
+    "empty": "No stocks match the current filters.",
+    "filter": {
+      "market": "Market",
+      "sector": "Sector",
+      "marketCap": "Market cap",
+      "peMax": "P/E max",
+      "yield": "Dividend yield",
+      "return1m": "1M return",
+      "all": "All",
+      "us": "US",
+      "hk": "HK",
+      "any": "Any",
+      "cap10b": "≥ $10B",
+      "cap50b": "≥ $50B",
+      "cap100b": "≥ $100B",
+      "cap500b": "≥ $500B",
+      "reset": "Reset"
+    },
+    "col": {
+      "symbol": "Symbol",
+      "market": "Market",
+      "price": "Price",
+      "change": "Change",
+      "volume": "Volume",
+      "marketCap": "Mkt cap",
+      "pe": "P/E",
+      "yield": "Yield",
+      "return1m": "1M"
+    }
   },
   "stock": {
     "symbol": "Symbol",

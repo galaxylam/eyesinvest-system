@@ -11,6 +11,7 @@ import type {
 import { MARKET_INDICES } from '@eyesinvest/types';
 import type {
   RelativeStrength,
+  ScreenerRow,
   StockDetail,
   StockSearchResult,
   VolumeAggregates,
@@ -566,4 +567,54 @@ export function getMockRelativeStrength(
     stockReturn1y: latest?.return1y ?? null,
     rsSession: diff(opts.quoteChangePercent, indexChangePercent),
   } satisfies RelativeStrength;
+}
+
+// ============================================================================
+// Screener — denormalised one-row-per-stock mock. Combines quote + fundamentals
+// + latest analytics for every stock in the mock universe so the screener page
+// has the same shape regardless of Supabase availability.
+// ============================================================================
+
+/**
+ * Build a screener row for one symbol by joining the existing mock primitives.
+ * Kept private — callers should use `getMockScreenerRows` to get the full set.
+ */
+function buildMockScreenerRow(symbol: string): ScreenerRow | null {
+  const quote = getMockQuote(symbol);
+  const detail = getMockStockDetail(symbol);
+  const fundamentals = getMockFundamentals(symbol);
+  const analytics = getMockAnalytics(symbol, 252);
+  if (!detail) return null;
+  const latest = analytics[analytics.length - 1] ?? null;
+  return {
+    symbol: detail.symbol,
+    name: detail.name,
+    market: detail.market,
+    currency: detail.currency,
+    sector: detail.sector,
+    lastPrice: quote?.lastPrice ?? null,
+    change: quote?.change ?? null,
+    changePercent: quote?.changePercent ?? null,
+    volume: quote?.volume ?? null,
+    marketCap: fundamentals?.marketCap ?? null,
+    peRatio: fundamentals?.peRatio ?? null,
+    dividendYield: fundamentals?.dividendYield ?? null,
+    return1m: latest?.return1m ?? null,
+    return3m: latest?.return3m ?? null,
+    return6m: latest?.return6m ?? null,
+    return1y: latest?.return1y ?? null,
+  } satisfies ScreenerRow;
+}
+
+export function getMockScreenerRows(): ScreenerRow[] {
+  return listMockSymbols().map(buildMockScreenerRow).filter((r): r is ScreenerRow => r != null);
+}
+
+/**
+ * All mock symbols without going through `getAllMockStocks()` (which returns
+ * the public StockSearchResult shape). Used internally by the screener so we
+ * don't pay the SearchResult mapping on every row.
+ */
+function listMockSymbols(): string[] {
+  return STOCKS.map((s) => s.symbol);
 }

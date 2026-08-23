@@ -54,3 +54,59 @@ export interface RelativeStrength {
    */
   rsSession: number | null;
 }
+
+// ============================================================================
+// Screener — denormalised one-row-per-stock shape used by /screener. Combines
+// the columns of ey_stocks + ey_quote_snapshot + ey_stock_fundamentals + the
+// latest ey_stock_analytics row, joined client-side by stock id.
+// ============================================================================
+
+export interface ScreenerRow {
+  symbol: string;
+  name: string;
+  market: Market;
+  currency: string;
+  sector: string | null;
+  lastPrice: number | null;
+  change: number | null;
+  changePercent: number | null;
+  volume: number | null;
+  marketCap: number | null;
+  peRatio: number | null;
+  dividendYield: number | null;
+  return1m: number | null;
+  return3m: number | null;
+  return6m: number | null;
+  return1y: number | null;
+}
+
+export interface ScreenerFilters {
+  /** 'US' | 'HK' | undefined (both). */
+  market?: Market;
+  /** Exact sector string, or undefined for all. */
+  sector?: string;
+  /** Lower bound on market cap (USD-equivalent). */
+  marketCapMin?: number;
+  /** Upper bound on PE ratio (rows with peRatio > peMax are excluded). */
+  peMax?: number;
+  /** Lower bound on dividend yield (decimal, e.g. 0.01 = 1%). */
+  yieldMin?: number;
+  /** Lower bound on 1-month return (percent points, e.g. 0 = ≥0%). */
+  return1mMin?: number;
+}
+
+export type ScreenerSortColumn =
+  | 'symbol'
+  | 'marketCap'
+  | 'peRatio'
+  | 'dividendYield'
+  | 'return1m'
+  | 'changePercent'
+  | 'volume';
+
+export type ScreenerSortDir = 'asc' | 'desc';
+
+export interface ScreenerSort {
+  column: ScreenerSortColumn;
+  dir: ScreenerSortDir;
+}

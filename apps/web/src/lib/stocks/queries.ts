@@ -19,6 +19,7 @@ import {
   getMockPriceSeries,
   getMockQuote,
   getMockRelativeStrength,
+  getMockScreenerRows,
   getMockStockDetail,
   getMockTopMoversWithChange,
   getMockVolumeSeries,
@@ -28,13 +29,25 @@ import {
 } from './mock-data';
 import type {
   RelativeStrength,
+  ScreenerFilters,
+  ScreenerRow,
+  ScreenerSort,
+  ScreenerSortColumn,
   StockDetail,
   StockSearchResult,
   VolumeAggregates,
   VolumeSeries,
 } from './types';
 
-export type { RelativeStrength, VolumeAggregates, VolumeSeries };
+export type {
+  RelativeStrength,
+  ScreenerFilters,
+  ScreenerRow,
+  ScreenerSort,
+  ScreenerSortColumn,
+  VolumeAggregates,
+  VolumeSeries,
+};
 
 interface QueryResult<T> {
   data: T;
@@ -701,4 +714,162 @@ export async function getRelativeStrength(
 function diffPct(a: number | null, b: number | null): number | null {
   if (a == null || b == null) return null;
   return +(a - b).toFixed(2);
+}
+
+// ============================================================================
+// Screener — denormalised one-row-per-stock for /screener. Joins client-side
+// (ey_stocks + ey_quote_snapshot + ey_stock_fundamentals + latest
+// ey_stock_analytics row) so we don't need a SQL view migration; the data
+// volume per market is small and Supabase's foreign keys + indexes keep the
+// four-table scan fast enough.
+// ============================================================================
+
+const SCREENER_LIMIT = 200;
+
+/**
+ * Unique non-null sector strings across the active stock universe. Drives the
+ * sector dropdown options on the screener so they're never hard-coded.
+ */
+export async function getScreenerSectors(): Promise<QueryResult<string[]>> {
+  return withFallback(
+    async (supabase) => {
+      const { data, error } = await supabase
+        .from('ey_stocks')
+        .select('sector')
+        .eq('is_active', true)
+        .not('sector', 'is', null);
+      if (error) throw error;
+      const set = new Set<string>();
+      for (const r of (data ?? []) as Array<{ sector: string | null }>) {
+        if (r.sector) set.add(r.sector);
+      }
+      return [...set].sort((a, b) => a.localeCompare(b));
+    },
+    () => {
+      const set = new Set<string>();
+      for (const r of getMockScreenerRows()) {
+        if (r.sector) set.add(r.sector);
+      }
+      return [...set].sort((a, b) => a.localeCompare(b));
+    },
+  );
+}
+
+export async function getScreenerRows(
+  opts: { filters?: ScreenerFilters; sort?: ScreenerSort } = {},
+): Promise<QueryResult<ScreenerRow[]>> {
+  const filters = opts.filters ?? {};
+  const sort: ScreenerSort = opts.sort ?? { column: 'marketCap', dir: 'desc' };
+  return withFallback(
+    async (supabase) => {
+      const { data: stocks, error: stocksErr } = await supabase
+        .from('ey_stocks')
+        .select('id, symbol, name, market, currency, sector')
+        .eq('is_active', true)
+        .order('symbol', { ascending: true });
+      if (stocksErr) throw stocksErr;
+      const stockRows = (stocks ?? []) as Array<{
+        id: string;
+        symbol: string;
+        name: string;
+        market: Market;
+        currency: string;
+        sector: string | null;
+      }>;
+      if (stockRows.length === 0) return [];
+
+      const ids = stockRows.map((s) => s.id);
+      const [quotesRes, fundRes, analyticsRes] = await Promise.all([
+        supabase.from('ey_quote_snapshot').select(
+          'stock_id, last_price, change, change_percent, volume',
+        ).in('stock_id', ids),
+        supabase.from('ey_stock_fundamentals').select(
+          'stock_id, market_cap, pe_ratio, dividend_yield',
+        ).in('stock_id', ids),
+        // One row per (stock, as_of_date); take the latest by as_of_date desc.
+        supabase.from('ey_stock_analytics').select(
+          'stock_id, as_of_date, return_1m, return_3m, return_6m, return_1y',
+        ).in('stock_id', ids).order('as_of_date', { ascending: false }),
+      ]);
+      if (quotesRes.error) throw quotesRes.error;
+      if (fundRes.error) throw fundRes.error;
+      if (analyticsRes.error) throw analyticsRes.error;
+
+      const quoteMap = new Map<string, { last_price: number | null; change: number | null; change_percent: number | null; volume: number | null }>();
+      for (const q of (quotesRes.data ?? []) as Array<{ stock_id: string; last_price: number | null; change: number | null; change_percent: number | null; volume: number | null }>) {
+        quoteMap.set(q.stock_id, q);
+      }
+      const fundMap = new Map<string, { market_cap: number | null; pe_ratio: number | null; dividend_yield: number | null }>();
+      for (const f of (fundRes.data ?? []) as Array<{ stock_id: string; market_cap: number | null; pe_ratio: number | null; dividend_yield: number | null }>) {
+        fundMap.set(f.stock_id, f);
+      }
+      // Latest analytics row per stock_id.
+      const analyticsMap = new Map<string, { return_1m: number | null; return_3m: number | null; return_6m: number | null; return_1y: number | null }>();
+      for (const a of (analyticsRes.data ?? []) as Array<{ stock_id: string; as_of_date: string; return_1m: number | null; return_3m: number | null; return_6m: number | null; return_1y: number | null }>) {
+        if (analyticsMap.has(a.stock_id)) continue; // first wins; we ordered desc
+        analyticsMap.set(a.stock_id, a);
+      }
+
+      const rows: ScreenerRow[] = stockRows.map((s) => {
+        const q = quoteMap.get(s.id);
+        const f = fundMap.get(s.id);
+        const a = analyticsMap.get(s.id);
+        const num = (v: unknown): number | null => (v == null ? null : Number(v));
+        return {
+          symbol: s.symbol,
+          name: s.name,
+          market: s.market,
+          currency: s.currency,
+          sector: s.sector,
+          lastPrice: q ? num(q.last_price) : null,
+          change: q ? num(q.change) : null,
+          changePercent: q ? num(q.change_percent) : null,
+          volume: q ? num(q.volume) : null,
+          marketCap: f ? num(f.market_cap) : null,
+          peRatio: f ? num(f.pe_ratio) : null,
+          dividendYield: f ? num(f.dividend_yield) : null,
+          return1m: a ? num(a.return_1m) : null,
+          return3m: a ? num(a.return_3m) : null,
+          return6m: a ? num(a.return_6m) : null,
+          return1y: a ? num(a.return_1y) : null,
+        } satisfies ScreenerRow;
+      });
+
+      return applyScreenerSort(applyScreenerFilters(rows, filters), sort).slice(0, SCREENER_LIMIT);
+    },
+    () =>
+      applyScreenerSort(
+        applyScreenerFilters(getMockScreenerRows(), filters),
+        sort,
+      ).slice(0, SCREENER_LIMIT),
+  );
+}
+
+/** Null-safe filtering — null values pass when no constraint is specified. */
+function applyScreenerFilters(rows: ScreenerRow[], f: ScreenerFilters): ScreenerRow[] {
+  return rows.filter((r) => {
+    if (f.market && r.market !== f.market) return false;
+    if (f.sector && r.sector !== f.sector) return false;
+    if (f.marketCapMin != null && (r.marketCap == null || r.marketCap < f.marketCapMin)) return false;
+    if (f.peMax != null && (r.peRatio == null || r.peRatio > f.peMax)) return false;
+    if (f.yieldMin != null && (r.dividendYield == null || r.dividendYield < f.yieldMin)) return false;
+    if (f.return1mMin != null && (r.return1m == null || r.return1m < f.return1mMin)) return false;
+    return true;
+  });
+}
+
+/** Null-safe sort — nulls always sink to the bottom regardless of dir. */
+function applyScreenerSort(rows: ScreenerRow[], s: ScreenerSort): ScreenerRow[] {
+  const dir = s.dir === 'asc' ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const av = a[s.column];
+    const bv = b[s.column];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    if (typeof av === 'number' && typeof bv === 'number') {
+      return (av - bv) * dir;
+    }
+    return String(av).localeCompare(String(bv)) * dir;
+  });
 }

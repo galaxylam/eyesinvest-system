@@ -25,6 +25,7 @@
     "dashboard": "仪表板",
     "watchlist": "自选股",
     "search": "搜索",
+    "screener": "筛选器",
     "heatmap": "热力图",
     "rankings": "排行榜",
     "ai": "AI 分析",
@@ -91,6 +92,40 @@
     "placeholder": "搜索 AAPL、腾讯、Tencent…",
     "minChars": "请输入至少 2 个字符以进行搜索。",
     "noResults": "找不到符合「{query}」的股票。"
+  },
+  "screener": {
+    "title": "股票筛选器",
+    "subtitle": "按市场、行业、市值、估值、股息率与动能筛选并排序追踪名单。",
+    "count": "显示 {count, plural, =0 {无股票} one {1 个} other {{count} 个}}股票",
+    "empty": "目前筛选条件下没有任何股票。",
+    "filter": {
+      "market": "市场",
+      "sector": "行业",
+      "marketCap": "市值",
+      "peMax": "市盈率上限",
+      "yield": "股息率",
+      "return1m": "1 个月回报",
+      "all": "全部",
+      "us": "美股",
+      "hk": "港股",
+      "any": "不限",
+      "cap10b": "≥ $100 亿",
+      "cap50b": "≥ $500 亿",
+      "cap100b": "≥ $1,000 亿",
+      "cap500b": "≥ $5,000 亿",
+      "reset": "重置"
+    },
+    "col": {
+      "symbol": "代号",
+      "market": "市场",
+      "price": "价格",
+      "change": "涨跌",
+      "volume": "成交量",
+      "marketCap": "市值",
+      "pe": "市盈率",
+      "yield": "股息率",
+      "return1m": "1 个月"
+    }
   },
   "stock": {
     "symbol": "代号",
