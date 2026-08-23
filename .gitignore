@@ -14,6 +14,9 @@ playwright/.cache/
 .next/
 out/
 
+# TypeScript incremental build cache (regenerated per machine / per tsc run)
+*.tsbuildinfo
+
 # Production
 build/
 dist/

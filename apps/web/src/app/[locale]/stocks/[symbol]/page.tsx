@@ -18,7 +18,9 @@ interface StockPageProps {
   params: Promise<{ locale: string; symbol: string }>;
 }
 
-const CHART_DAYS = 252;
+// ~3 years of trading days (3 * 252). Matches the worker's 3y history window
+// so the chart + MA overlays span the full price history.
+const CHART_DAYS = 756;
 
 export default async function StockPage({ params }: StockPageProps) {
   const { locale, symbol } = await params;
