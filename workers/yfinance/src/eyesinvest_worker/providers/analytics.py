@@ -155,6 +155,32 @@ def _green_red_volume_ratio_1m(
     return green_avg / red_avg.replace(0, np.nan)
 
 
+def _green_red_volume_share_1m(
+    open_: pd.Series, close: pd.Series, volume: pd.Series, window: int = 30,
+) -> pd.Series:
+    """Trailing-30-day share of total volume on up-bars.
+
+        share = sum(volume on up-bars) / (sum on up-bars + sum on down-bars)
+
+    Range [0, 1]. NaN when the window has no up or no down bars (no
+    green-or-red signal to share against).
+
+    Differs from `_green_red_volume_ratio_1m` (avg_green / avg_red) by
+    weighting: a single huge-volume day moves `share` dramatically but
+    barely moves `ratio`. Both metrics are complementary.
+
+    Dojis (close == open) are excluded from both sides; they don't move
+    the price and shouldn't move the share either.
+    """
+    is_green = (close > open_).astype(float)
+    is_red = (close < open_).astype(float)
+    green_vol_sum = (volume * is_green).rolling(window, min_periods=window).sum()
+    red_vol_sum = (volume * is_red).rolling(window, min_periods=window).sum()
+    total = green_vol_sum + red_vol_sum
+    # total == 0 means the window was all dojis / missing volume — return NaN.
+    return green_vol_sum / total.replace(0, np.nan)
+
+
 # ----- Phase 3+ squeeze-score helpers ----------------------------------------
 
 
@@ -363,6 +389,9 @@ def compute_analytics(
     df["green_red_volume_ratio_1m"] = _green_red_volume_ratio_1m(
         open_series, close, volume_series, window=30,
     )
+    df["green_red_volume_share_1m"] = _green_red_volume_share_1m(
+        open_series, close, volume_series, window=30,
+    )
     df["relative_strength"] = pd.Series(np.nan, index=df.index, dtype="float64")
 
     # Phase 3+ squeeze-score components — per-row trailing-window series so
@@ -428,6 +457,7 @@ def compute_analytics(
                 volume_efficiency=_maybe_float(r.get("volume_efficiency")),
                 crowded_ratio=_maybe_float(r.get("crowded_ratio")),
                 green_red_volume_ratio_1m=_maybe_float(r.get("green_red_volume_ratio_1m")),
+                green_red_volume_share_1m=_maybe_float(r.get("green_red_volume_share_1m")),
                 relative_strength=_maybe_float(r.get("relative_strength")),
                 squeeze_score=squeeze_score,
                 squeeze_dtc=squeeze_dtc,

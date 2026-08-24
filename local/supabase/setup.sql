@@ -514,6 +514,13 @@ alter table public.ey_stock_analytics
   add column if not exists squeeze_volume_spike   numeric(6,2),
   add column if not exists squeeze_am_ratio       numeric(5,2);
 
+-- ============================================================================
+-- Phase 3+ green/red volume share (1M) — see 0014_green_red_volume_share.sql
+-- ============================================================================
+
+alter table public.ey_stock_analytics
+  add column if not exists green_red_volume_share_1m numeric(6,4);
+
 create index if not exists idx_ey_stock_analytics_squeeze_score
   on public.ey_stock_analytics (as_of_date desc, squeeze_score desc)
   where squeeze_score is not null;

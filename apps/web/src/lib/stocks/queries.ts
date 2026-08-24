@@ -468,7 +468,7 @@ export async function getStockAnalytics(
         .select(
           'as_of_date, ma20, ma50, ma200, rsi14, macd_line, macd_signal, macd_hist, ' +
             'volatility_30d, max_drawdown_30d, return_1m, return_3m, return_6m, return_1y, return_1w, ' +
-            'volume_efficiency, crowded_ratio, relative_strength',
+            'volume_efficiency, crowded_ratio, green_red_volume_ratio_1m, green_red_volume_share_1m, relative_strength',
         )
         .eq('stock_id', stockRow.id)
         .order('as_of_date', { ascending: false })
@@ -522,6 +522,7 @@ export async function getStockAnalytics(
         volume_efficiency: number | null;
         crowded_ratio: number | null;
         green_red_volume_ratio_1m: number | null;
+        green_red_volume_share_1m: number | null;
         relative_strength: number | null;
       }>).map(
         (r) =>
@@ -548,6 +549,7 @@ export async function getStockAnalytics(
             volumeEfficiency: num(r.volume_efficiency),
             crowdedRatio: num(r.crowded_ratio),
             greenRedVolumeRatio1m: num(r.green_red_volume_ratio_1m),
+            greenRedVolumeShare1m: num(r.green_red_volume_share_1m),
             relativeStrength: num(r.relative_strength),
           }) satisfies StockAnalytics,
       );
@@ -890,7 +892,7 @@ export async function getVolumeEfficiency(
           dailyChangePct != null && turnoverPct != null && turnoverPct > 0
             ? Math.abs(dailyChangePct) / turnoverPct
             : null;
-        return { date: r.date, efficiency, turnoverPct, dailyChangePct };
+        return { date: r.date, efficiency, turnoverPct, dailyChangePct, volume: r.volume };
       });
 
       return {
@@ -1088,7 +1090,7 @@ export async function getScreenerRows(
         supabase.from('ey_stock_analytics').select(
           'stock_id, as_of_date, return_1m, return_3m, return_6m, return_1y, ' +
             'volume_efficiency, crowded_ratio, ma5_slope, ma20_slope, green_red_volume_ratio_1m, ' +
-            'squeeze_score',
+            'green_red_volume_share_1m, squeeze_score',
         ).in('stock_id', ids).order('as_of_date', { ascending: false }),
         // Last 5 bi-weekly settlements per stock — enough for the
         // "increasing / decreasing for 1/2/3 periods" short-interest filter.
@@ -1115,6 +1117,7 @@ export async function getScreenerRows(
         return_1m: number | null; return_3m: number | null; return_6m: number | null; return_1y: number | null;
         volume_efficiency: number | null; crowded_ratio: number | null;
         ma5_slope: number | null; ma20_slope: number | null; green_red_volume_ratio_1m: number | null;
+        green_red_volume_share_1m: number | null;
         squeeze_score: number | null;
       }>();
       for (const a of ((analyticsRes.data ?? []) as unknown as Array<{
@@ -1122,6 +1125,7 @@ export async function getScreenerRows(
         return_1m: number | null; return_3m: number | null; return_6m: number | null; return_1y: number | null;
         volume_efficiency: number | null; crowded_ratio: number | null;
         ma5_slope: number | null; ma20_slope: number | null; green_red_volume_ratio_1m: number | null;
+        green_red_volume_share_1m: number | null;
         squeeze_score: number | null;
       }>)) {
         if (analyticsMap.has(a.stock_id)) continue; // first wins; we ordered desc
@@ -1164,6 +1168,7 @@ export async function getScreenerRows(
           ma5Slope: a ? num(a.ma5_slope) : null,
           ma20Slope: a ? num(a.ma20_slope) : null,
           greenRedVolumeRatio1m: a ? num(a.green_red_volume_ratio_1m) : null,
+          greenRedVolumeShare1m: a ? num(a.green_red_volume_share_1m) : null,
           shortInterestTrend: computeShortInterestTrend(interest),
           squeezeScore: a ? num(a.squeeze_score) : null,
         } satisfies ScreenerRow;

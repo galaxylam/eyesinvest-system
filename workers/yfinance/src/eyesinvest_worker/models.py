@@ -87,7 +87,14 @@ class StockAnalyticsRow(BaseModel):
     # "green ≥ N% higher than red" filter.
     ma5_slope: float | None = None
     ma20_slope: float | None = None
+    # Phase 3+ green/red volume metrics — both populated by sync-analytics.
+    # ratio = avg(volume on up-bars) / avg(volume on down-bars) — treats every
+    #         day equally. See migration 0008.
+    # share = sum(volume on up-bars) / (sum on up + sum on down) — weights
+    #         high-volume days more heavily. See migration 0014.
+    # Dojis (close == open) are excluded from both.
     green_red_volume_ratio_1m: float | None = None
+    green_red_volume_share_1m: float | None = None
     rsi14: float | None = None
     macd_line: float | None = None
     macd_signal: float | None = None

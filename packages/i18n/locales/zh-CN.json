@@ -297,6 +297,16 @@
         "amVol": "上午短仓量",
         "amHkd": "上午短仓金额",
         "amRatio": "上午占全日 {pct}"
+      },
+      "volumeEfficiency": {
+        "title": "量价效率",
+        "turnover30d": "30 日换手",
+        "avgGreen": "涨日均",
+        "avgRed": "跌日均",
+        "greenShare": "涨日量比",
+        "today": "今日",
+        "noFloat": "暂无该股流通股数数据。",
+        "notEnoughHistory": "需要至少两日历史价格。"
       }
     },
     "squeezePanel": {

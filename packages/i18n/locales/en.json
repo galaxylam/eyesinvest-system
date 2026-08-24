@@ -297,6 +297,16 @@
         "amVol": "AM short vol",
         "amHkd": "AM short HKD",
         "amRatio": "AM = {pct} of day"
+      },
+      "volumeEfficiency": {
+        "title": "Volume efficiency",
+        "turnover30d": "30D Turnover",
+        "avgGreen": "Avg green",
+        "avgRed": "Avg red",
+        "greenShare": "Green share",
+        "today": "Today",
+        "noFloat": "Shares outstanding unavailable for this symbol.",
+        "notEnoughHistory": "Need at least 2 days of price history."
       }
     },
     "squeezePanel": {

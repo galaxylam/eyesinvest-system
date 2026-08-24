@@ -36,6 +36,8 @@ export interface StockAnalytics {
   crowdedRatio: number | null;
   /** Trailing 30-day mean(volume on close>open bars) ÷ mean(volume on close<open bars). Null until 30 days of history. >1 = green bars traded more, <1 = red bars traded more. Drives the screener "1M green ≥ N% higher than red" filter. */
   greenRedVolumeRatio1m: number | null;
+  /** Trailing 30-day sum(volume on close>open bars) ÷ (sum on close>open + sum on close<open). Null until 30 days of history. >0.5 = green bars carried more total volume. Sibling of `greenRedVolumeRatio1m` — share weights high-volume days more heavily. */
+  greenRedVolumeShare1m: number | null;
   /** Trailing 1m return minus the stock's market benchmark (SPX for US, HSI for HK). Percent points. Populated only on the most-recent row. */
   relativeStrength: number | null;
 }

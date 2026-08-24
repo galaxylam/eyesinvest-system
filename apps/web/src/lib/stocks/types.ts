@@ -104,6 +104,9 @@ export interface VolumeEfficiency {
  * Per-day record for the Volume Efficiency subplot. `efficiency` =
  * `|dailyChangePct| / turnoverPct`; the inputs are kept on the shape so
  * the UI can show a tooltip / breakdown later without a second query.
+ * `volume` is the raw share count for the day — needed by the chart to
+ * compute the green/red volume share pill (sum of up-day volume ÷ total
+ * volume) without re-fetching.
  */
 export interface EfficiencyPoint {
   /** ISO date string YYYY-MM-DD. */
@@ -114,6 +117,8 @@ export interface EfficiencyPoint {
   turnoverPct: number | null;
   /** (close - prevClose) / prevClose × 100. Null on the first day. */
   dailyChangePct: number | null;
+  /** Raw daily share volume. Null when not available. */
+  volume: number | null;
 }
 
 /** Per-day MA5 / MA30 of volume + their ratio, used to plot the subgraph. */
@@ -307,6 +312,8 @@ export interface ScreenerRow {
   ma20Slope: number | null;
   /** Trailing 30d mean(volume on up bars) ÷ mean(volume on down bars). Null until ≥30 days of history. >1 = up-bars traded more. */
   greenRedVolumeRatio1m: number | null;
+  /** Trailing 30d sum(volume on up bars) ÷ (sum on up + sum on down bars). Null until ≥30 days of history. >0.5 = up-bars carried more volume. Sibling of `greenRedVolumeRatio1m` — share weights high-volume days more heavily. */
+  greenRedVolumeShare1m: number | null;
   /** Trend of the latest bi-weekly short_interest. 'up' = latest > previous, 'down' = latest < previous, 'flat' = equal, null = insufficient history (<2 settlements). */
   shortInterestTrend: 'up' | 'down' | 'flat' | null;
   /** 0..100 composite short-squeeze score (see docs/SQUEEZE.md). Null when any

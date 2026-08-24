@@ -479,6 +479,7 @@ function computeIndicatorsAt(
   // Null until 30 days of history; null when no green OR no red bars in
   // the window (preserves the "no signal" state).
   let greenRedVolumeRatio1m: number | null = null;
+  let greenRedVolumeShare1m: number | null = null;
   if (idx >= 29) {
     const window = bars.slice(idx - 29, idx + 1);
     let greenSum = 0, greenCount = 0, redSum = 0, redCount = 0;
@@ -488,6 +489,10 @@ function computeIndicatorsAt(
     }
     if (greenCount > 0 && redCount > 0) {
       greenRedVolumeRatio1m = +((greenSum / greenCount) / (redSum / redCount)).toFixed(4);
+    }
+    const total = greenSum + redSum;
+    if (total > 0) {
+      greenRedVolumeShare1m = +(greenSum / total).toFixed(4);
     }
   }
 
@@ -514,6 +519,7 @@ function computeIndicatorsAt(
     volumeEfficiency: volumeEfficiency != null ? +volumeEfficiency.toFixed(4) : null,
     crowdedRatio,
     greenRedVolumeRatio1m,
+    greenRedVolumeShare1m,
     relativeStrength: null,
   };
 }
@@ -755,6 +761,8 @@ export function getMockVolumeEfficiency(symbol: string): VolumeEfficiency | null
   // Per-day series for the VolumeEfficiencyChart subplot. Mirrors the
   // production query: each row carries its own dailyChangePct + turnoverPct
   // so the UI can recompute efficiency / draw tooltips without re-fetching.
+  // `volume` is included so the chart can compute the green/red volume
+  // share pill inline (matching the worker's `green_red_volume_share_1m`).
   const series: EfficiencyPoint[] = bars.map((b, i) => {
     const prev = i > 0 ? bars[i - 1] : null;
     const dailyChangePct =
@@ -767,7 +775,7 @@ export function getMockVolumeEfficiency(symbol: string): VolumeEfficiency | null
       dailyChangePct != null && turnoverPct != null && turnoverPct > 0
         ? Math.abs(dailyChangePct) / turnoverPct
         : null;
-    return { date: b.time, efficiency, turnoverPct, dailyChangePct };
+    return { date: b.time, efficiency, turnoverPct, dailyChangePct, volume: b.volume };
   });
 
   return {
@@ -1119,6 +1127,7 @@ function buildMockScreenerRow(symbol: string): ScreenerRow | null {
     ma5Slope: latest?.ma5Slope ?? null,
     ma20Slope: latest?.ma20Slope ?? null,
     greenRedVolumeRatio1m: latest?.greenRedVolumeRatio1m ?? null,
+    greenRedVolumeShare1m: latest?.greenRedVolumeShare1m ?? null,
     shortInterestTrend: interestTrend,
     squeezeScore: squeeze?.score ?? null,
   } satisfies ScreenerRow;

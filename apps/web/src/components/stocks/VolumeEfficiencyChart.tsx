@@ -9,6 +9,7 @@ import {
   type ISeriesApi,
   type Time,
 } from 'lightweight-charts';
+import { useTranslations } from 'next-intl';
 import { formatRatio } from '@/lib/format/quote';
 import type { VolumeEfficiency } from '@/lib/stocks/queries';
 
@@ -40,6 +41,7 @@ export function VolumeEfficiencyChart({
   const histRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const meanRef = useRef<ISeriesApi<'Line'> | null>(null);
   const avg30Ref = useRef<ISeriesApi<'Line'> | null>(null);
+  const t = useTranslations('stock.charts.volumeEfficiency');
 
   const usable = useMemo(
     () =>
@@ -49,6 +51,7 @@ export function VolumeEfficiencyChart({
           time: p.date as Time,
           value: p.efficiency as number,
           change: p.dailyChangePct as number,
+          volume: p.volume,
         })),
     [data?.series],
   );
@@ -93,6 +96,24 @@ export function VolumeEfficiencyChart({
     const reds = windowed.filter((p) => p.change < 0);
     if (reds.length === 0) return null;
     return reds.reduce((s, p) => s + p.value, 0) / reds.length;
+  }, [windowed]);
+
+  // Sum-based share of total volume on up-days (sibling to the avg-based
+  // green/red ratio pills above). Sum-based weights high-volume days
+  // more heavily than the avg-based ratio. Computed inline from the
+  // `windowed` series so the pill tracks the visible picker range, same
+  // as `greenAvg` / `redAvg`. Dojis (change == 0) are excluded.
+  const greenShare = useMemo(() => {
+    let greenSum = 0;
+    let redSum = 0;
+    for (const p of windowed) {
+      if (p.volume == null) continue;
+      if (p.change > 0) greenSum += p.volume;
+      else if (p.change < 0) redSum += p.volume;
+    }
+    const total = greenSum + redSum;
+    if (total <= 0) return null;
+    return greenSum / total;
   }, [windowed]);
 
   useEffect(() => {
@@ -188,9 +209,7 @@ export function VolumeEfficiencyChart({
         className="flex items-center justify-center rounded-md border border-dashed border-border bg-bg-elevated px-4 text-2xs text-fg-muted"
         style={{ height }}
       >
-        {data && !data.hasFloatData
-          ? 'Shares outstanding unavailable for this symbol.'
-          : 'Need at least 2 days of price history.'}
+        {data && !data.hasFloatData ? t('noFloat') : t('notEnoughHistory')}
       </div>
     );
   }
@@ -209,32 +228,42 @@ export function VolumeEfficiencyChart({
     <section className="rounded-md border border-border bg-bg-elevated">
       <div className="flex items-baseline justify-between gap-3 border-b border-border px-5 py-3">
         <div className="flex items-baseline gap-3">
-          <h3 className="text-sm font-semibold text-fg">Volume efficiency</h3>
+          <h3 className="text-sm font-semibold text-fg">{t('title')}</h3>
         </div>
         <div className="flex items-baseline gap-4">
           {avg30 != null && (
             <div className="flex items-baseline gap-1.5">
               <span className="inline-block h-2 w-2 rounded-sm bg-orange-400" aria-hidden />
-              <span className="text-2xs text-fg-subtle">30D Turnover</span>
+              <span className="text-2xs text-fg-subtle">{t('turnover30d')}</span>
               <span className="tabular font-mono text-xs font-medium text-fg">
                 {avg30.toFixed(3)}%
               </span>
             </div>
           )}
           <div className="flex items-baseline gap-2 border-l border-border pl-4">
-            <span className="text-2xs text-fg-subtle">Avg green</span>
+            <span className="text-2xs text-fg-subtle">{t('avgGreen')}</span>
             <span className="tabular font-mono text-xs font-medium text-emerald-500">
               {greenAvg != null ? `${greenAvg.toFixed(3)}×` : '—'}
             </span>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xs text-fg-subtle">Avg red</span>
+            <span className="text-2xs text-fg-subtle">{t('avgRed')}</span>
             <span className="tabular font-mono text-xs font-medium text-rose-500">
               {redAvg != null ? `${redAvg.toFixed(3)}×` : '—'}
             </span>
           </div>
+          <div className="flex items-baseline gap-2 border-l border-border pl-4">
+            <span className="text-2xs text-fg-subtle">{t('greenShare')}</span>
+            <span
+              className={`tabular font-mono text-xs font-medium ${
+                greenShare != null && greenShare >= 0.5 ? 'text-emerald-500' : 'text-rose-500'
+              }`}
+            >
+              {greenShare != null ? `${(greenShare * 100).toFixed(1)}%` : '—'}
+            </span>
+          </div>
           <div className="hidden items-baseline gap-2 border-l border-border pl-4 sm:flex">
-            <span className="text-2xs text-fg-subtle">Today</span>
+            <span className="text-2xs text-fg-subtle">{t('today')}</span>
             <span className={`tabular font-mono text-base font-semibold ${toneClass}`}>
               {formatRatio(eff)}
             </span>
