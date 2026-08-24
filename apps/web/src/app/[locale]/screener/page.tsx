@@ -21,6 +21,14 @@ interface ScreenerPageProps {
     ret1m?: string;
     eff?: string;
     crowd?: string;
+    /** MA5 trend: 'up' | 'down' */
+    ma5?: string;
+    /** MA20 trend: 'up' | 'down' */
+    ma20?: string;
+    /** Green/red ratio: 'g1.1' / 'g1.2' / 'g1.3' / 'r1.1' / 'r1.2' / 'r1.3' */
+    gr?: string;
+    /** Short-interest trend: 'u1' / 'u2' / 'u3' / 'd1' / 'd2' / 'd3' */
+    sit?: string;
     sort?: string;
     dir?: string;
   }>;
@@ -63,6 +71,28 @@ function parseFilters(sp: Awaited<ScreenerPageProps['searchParams']>): ScreenerF
   if (sp.crowd) {
     const n = Number(sp.crowd);
     if (Number.isFinite(n) && n >= 0) f.crowdedRatioMin = n;
+  }
+  if (sp.ma5 === 'up' || sp.ma5 === 'down') f.ma5Trend = sp.ma5;
+  if (sp.ma20 === 'up' || sp.ma20 === 'down') f.ma20Trend = sp.ma20;
+  // green/red: encoding is e.g. 'g1.2' or 'r1.3'. Direction is the first
+  // char; threshold is the rest. Anything malformed is silently ignored so
+  // a hand-edited URL doesn't 500 the page.
+  if (sp.gr) {
+    const c = sp.gr[0];
+    const n = Number(sp.gr.slice(1));
+    if ((c === 'g' || c === 'r') && (n === 1.1 || n === 1.2 || n === 1.3)) {
+      f.greenRed = { direction: c === 'g' ? 'green' : 'red', threshold: n as 1.1 | 1.2 | 1.3 };
+    }
+  }
+  if (sp.sit) {
+    const c = sp.sit[0];
+    const n = Number(sp.sit.slice(1));
+    if ((c === 'u' || c === 'd') && (n === 1 || n === 2 || n === 3)) {
+      f.shortInterestTrend = {
+        direction: c === 'u' ? 'up' : 'down',
+        periods: n as 1 | 2 | 3,
+      };
+    }
   }
   return f;
 }

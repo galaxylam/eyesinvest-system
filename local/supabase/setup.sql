@@ -483,6 +483,15 @@ alter table public.ey_sector_daily
 
 alter table public.ey_stock_analytics
   add column if not exists ma5 numeric(18,6);
+
+-- ============================================================================
+-- Phase 3+ screener filter inputs — see 0011_screener_filters.sql
+-- ============================================================================
+
+alter table public.ey_stock_analytics
+  add column if not exists ma5_slope                  numeric(18,6),
+  add column if not exists ma20_slope                 numeric(18,6),
+  add column if not exists green_red_volume_ratio_1m numeric(18,6);
 -- ============================================================================
 -- EyesInvest — Phase 1 seed data
 --

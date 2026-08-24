@@ -247,6 +247,29 @@ export interface ScreenerRow {
   volumeEfficiencyToday: number | null;
   /** MA5(volume) / MA30(volume) for the latest day. Null until ≥30 days of history. */
   crowdedRatio: number | null;
+  /** Signed delta of ma5 vs the prior trading day. Null on the first row of the series. */
+  ma5Slope: number | null;
+  /** Signed delta of ma20 vs the prior trading day. Null on the first row of the series. */
+  ma20Slope: number | null;
+  /** Trailing 30d mean(volume on up bars) ÷ mean(volume on down bars). Null until ≥30 days of history. >1 = up-bars traded more. */
+  greenRedVolumeRatio1m: number | null;
+  /** Trend of the latest bi-weekly short_interest. 'up' = latest > previous, 'down' = latest < previous, 'flat' = equal, null = insufficient history (<2 settlements). */
+  shortInterestTrend: 'up' | 'down' | 'flat' | null;
+}
+
+/** Direction + threshold for the 1M green-vs-red volume ratio filter. The
+ *  ratio is `mean(volume on up bars) ÷ mean(volume on down bars)`. */
+export interface GreenRedFilter {
+  direction: 'green' | 'red';
+  /** 1.1 = ≥10% higher, 1.2 = ≥20% higher, 1.3 = ≥30% higher. */
+  threshold: 1.1 | 1.2 | 1.3;
+}
+
+/** Direction + number of consecutive periods for the short-interest trend
+ *  filter. One period = one bi-weekly settlement. */
+export interface ShortInterestTrendFilter {
+  direction: 'up' | 'down';
+  periods: 1 | 2 | 3;
 }
 
 export interface ScreenerFilters {
@@ -266,6 +289,14 @@ export interface ScreenerFilters {
   volumeEfficiencyMin?: number;
   /** Lower bound on crowded ratio (MA5÷MA30, e.g. 1.5 = ≥1.5×). */
   crowdedRatioMin?: number;
+  /** 'up' = latest ma5 > previous ma5, 'down' = latest ma5 ≤ previous ma5. */
+  ma5Trend?: 'up' | 'down';
+  /** 'up' = latest ma20 > previous ma20, 'down' = latest ma20 ≤ previous ma20. */
+  ma20Trend?: 'up' | 'down';
+  /** 1M green/red volume ratio — green means up-bars traded ≥ threshold × more, red means down-bars did. */
+  greenRed?: GreenRedFilter;
+  /** Short-interest settlement trend over the last N consecutive periods. */
+  shortInterestTrend?: ShortInterestTrendFilter;
 }
 
 export type ScreenerSortColumn =

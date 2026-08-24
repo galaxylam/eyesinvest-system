@@ -5,6 +5,22 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import type { ScreenerFilters } from '@/lib/stocks/queries';
 
+/** Serialise the four new combined filters into compact URL params.
+ *  - ma5 / ma20: 'up' | 'down' (or undefined)
+ *  - gr: '<direction><threshold>' — 'g1.1', 'r1.3', etc.
+ *  - sit: '<direction><periods>' — 'u2', 'd3', etc. */
+function encodeMaTrend(v: 'up' | 'down' | undefined): string | undefined {
+  return v;
+}
+function encodeGr(v: ScreenerFilters['greenRed']): string | undefined {
+  if (!v) return undefined;
+  return `${v.direction[0]}${v.threshold}`;
+}
+function encodeSit(v: ScreenerFilters['shortInterestTrend']): string | undefined {
+  if (!v) return undefined;
+  return `${v.direction[0]}${v.periods}`;
+}
+
 interface ScreenerFiltersProps {
   current: ScreenerFilters;
   /** Available sector values, derived from the data so the dropdown isn't hard-coded. */
@@ -46,6 +62,14 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
     else params.delete('eff');
     if (next.crowdedRatioMin != null) params.set('crowd', String(next.crowdedRatioMin));
     else params.delete('crowd');
+    const ma5 = encodeMaTrend(next.ma5Trend);
+    if (ma5) params.set('ma5', ma5); else params.delete('ma5');
+    const ma20 = encodeMaTrend(next.ma20Trend);
+    if (ma20) params.set('ma20', ma20); else params.delete('ma20');
+    const gr = encodeGr(next.greenRed);
+    if (gr) params.set('gr', gr); else params.delete('gr');
+    const sit = encodeSit(next.shortInterestTrend);
+    if (sit) params.set('sit', sit); else params.delete('sit');
 
     const query = params.toString();
     startTransition(() => {
@@ -67,7 +91,11 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
     current.yieldMin != null ||
     current.return1mMin != null ||
     current.volumeEfficiencyMin != null ||
-    current.crowdedRatioMin != null;
+    current.crowdedRatioMin != null ||
+    current.ma5Trend != null ||
+    current.ma20Trend != null ||
+    current.greenRed != null ||
+    current.shortInterestTrend != null;
 
   return (
     <div
@@ -174,6 +202,74 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
           { value: '1.2', label: t('filter.crowd1_2') },
           { value: '1.5', label: t('filter.crowd1_5') },
           { value: '2', label: t('filter.crowd2') },
+        ]}
+      />
+      <SelectField
+        label={t('filter.ma5')}
+        value={current.ma5Trend ?? ''}
+        onChange={(v) =>
+          apply({ ...current, ma5Trend: v === '' ? undefined : (v as 'up' | 'down') })
+        }
+        options={[
+          { value: '', label: t('filter.any') },
+          { value: 'up', label: t('filter.maUp') },
+          { value: 'down', label: t('filter.maDown') },
+        ]}
+      />
+      <SelectField
+        label={t('filter.ma20')}
+        value={current.ma20Trend ?? ''}
+        onChange={(v) =>
+          apply({ ...current, ma20Trend: v === '' ? undefined : (v as 'up' | 'down') })
+        }
+        options={[
+          { value: '', label: t('filter.any') },
+          { value: 'up', label: t('filter.maUp') },
+          { value: 'down', label: t('filter.maDown') },
+        ]}
+      />
+      <SelectField
+        label={t('filter.greenRed')}
+        value={current.greenRed ? `${current.greenRed.direction[0]}${current.greenRed.threshold}` : ''}
+        onChange={(v) => {
+          if (v === '') {
+            apply({ ...current, greenRed: undefined });
+            return;
+          }
+          const direction = v[0] === 'g' ? 'green' : 'red';
+          const threshold = Number(v.slice(1)) as 1.1 | 1.2 | 1.3;
+          apply({ ...current, greenRed: { direction, threshold } });
+        }}
+        options={[
+          { value: '', label: t('filter.any') },
+          { value: 'g1.1', label: t('filter.greenGE10') },
+          { value: 'g1.2', label: t('filter.greenGE20') },
+          { value: 'g1.3', label: t('filter.greenGE30') },
+          { value: 'r1.1', label: t('filter.redGE10') },
+          { value: 'r1.2', label: t('filter.redGE20') },
+          { value: 'r1.3', label: t('filter.redGE30') },
+        ]}
+      />
+      <SelectField
+        label={t('filter.shortInterestTrend')}
+        value={current.shortInterestTrend ? `${current.shortInterestTrend.direction[0]}${current.shortInterestTrend.periods}` : ''}
+        onChange={(v) => {
+          if (v === '') {
+            apply({ ...current, shortInterestTrend: undefined });
+            return;
+          }
+          const direction = v[0] === 'u' ? 'up' : 'down';
+          const periods = Number(v.slice(1)) as 1 | 2 | 3;
+          apply({ ...current, shortInterestTrend: { direction, periods } });
+        }}
+        options={[
+          { value: '', label: t('filter.any') },
+          { value: 'u1', label: t('filter.siInc1') },
+          { value: 'u2', label: t('filter.siInc2') },
+          { value: 'u3', label: t('filter.siInc3') },
+          { value: 'd1', label: t('filter.siDec1') },
+          { value: 'd2', label: t('filter.siDec2') },
+          { value: 'd3', label: t('filter.siDec3') },
         ]}
       />
 

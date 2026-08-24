@@ -23,6 +23,7 @@ import {
   getMockRelativeStrength,
   getMockScreenerRows,
   getMockSectorDaily,
+  getMockShortInterestBySymbol,
   getMockShortSelling,
   getMockStockDetail,
   getMockStocksBySector,
@@ -38,8 +39,10 @@ import type {
   CrowdedRatioPoint,
   CrowdedRegime,
   EfficiencyPoint,
+  GreenRedFilter,
   RelativeStrength,
   ScreenerFilters,
+  ShortInterestTrendFilter,
   ScreenerRow,
   ScreenerSort,
   ScreenerSortColumn,
@@ -500,6 +503,8 @@ export async function getStockAnalytics(
         ma20: number | null;
         ma50: number | null;
         ma200: number | null;
+        ma5_slope: number | null;
+        ma20_slope: number | null;
         rsi14: number | null;
         macd_line: number | null;
         macd_signal: number | null;
@@ -513,6 +518,7 @@ export async function getStockAnalytics(
         return_1w: number | null;
         volume_efficiency: number | null;
         crowded_ratio: number | null;
+        green_red_volume_ratio_1m: number | null;
         relative_strength: number | null;
       }>).map(
         (r) =>
@@ -523,6 +529,8 @@ export async function getStockAnalytics(
             ma20: num(r.ma20),
             ma50: num(r.ma50),
             ma200: num(r.ma200),
+            ma5Slope: num(r.ma5_slope),
+            ma20Slope: num(r.ma20_slope),
             rsi14: num(r.rsi14),
             macdLine: num(r.macd_line),
             macdSignal: num(r.macd_signal),
@@ -536,6 +544,7 @@ export async function getStockAnalytics(
             return1w: num(r.return_1w),
             volumeEfficiency: num(r.volume_efficiency),
             crowdedRatio: num(r.crowded_ratio),
+            greenRedVolumeRatio1m: num(r.green_red_volume_ratio_1m),
             relativeStrength: num(r.relative_strength),
           }) satisfies StockAnalytics,
       );
@@ -1059,7 +1068,7 @@ export async function getScreenerRows(
       if (stockRows.length === 0) return [];
 
       const ids = stockRows.map((s) => s.id);
-      const [quotesRes, fundRes, analyticsRes] = await Promise.all([
+      const [quotesRes, fundRes, analyticsRes, interestRes] = await Promise.all([
         supabase.from('ey_quote_snapshot').select(
           'stock_id, last_price, change, change_percent, volume',
         ).in('stock_id', ids),
@@ -1070,13 +1079,24 @@ export async function getScreenerRows(
         // Phase 3+: `volume_efficiency` + `crowded_ratio` are persisted here by
         // `sync-sector-strength` — replaces the previous per-stock
         // `ey_price_1d` 30-day pull + `deriveEfficiencyAndCrowded` round trip.
+        // Phase 3+ screener filters: ma5_slope / ma20_slope /
+        // green_red_volume_ratio_1m drive the "MA upward / 1M green vs red"
+        // dropdowns (see 0011_screener_filters.sql).
         supabase.from('ey_stock_analytics').select(
-          'stock_id, as_of_date, return_1m, return_3m, return_6m, return_1y, volume_efficiency, crowded_ratio',
+          'stock_id, as_of_date, return_1m, return_3m, return_6m, return_1y, ' +
+            'volume_efficiency, crowded_ratio, ma5_slope, ma20_slope, green_red_volume_ratio_1m',
         ).in('stock_id', ids).order('as_of_date', { ascending: false }),
+        // Last 5 bi-weekly settlements per stock — enough for the
+        // "increasing / decreasing for 1/2/3 periods" short-interest filter.
+        // One row per (stock_id, settlement_date); 30 stocks × 5 ≈ 150 rows.
+        supabase.from('ey_short_interest').select(
+          'stock_id, settlement_date, short_interest',
+        ).in('stock_id', ids).order('settlement_date', { ascending: false }).limit(ids.length * 5),
       ]);
       if (quotesRes.error) throw quotesRes.error;
       if (fundRes.error) throw fundRes.error;
       if (analyticsRes.error) throw analyticsRes.error;
+      if (interestRes.error) throw interestRes.error;
 
       const quoteMap = new Map<string, { last_price: number | null; change: number | null; change_percent: number | null; volume: number | null }>();
       for (const q of (quotesRes.data ?? []) as Array<{ stock_id: string; last_price: number | null; change: number | null; change_percent: number | null; volume: number | null }>) {
@@ -1087,16 +1107,34 @@ export async function getScreenerRows(
         fundMap.set(f.stock_id, f);
       }
       // Latest analytics row per stock_id.
-      const analyticsMap = new Map<string, { return_1m: number | null; return_3m: number | null; return_6m: number | null; return_1y: number | null; volume_efficiency: number | null; crowded_ratio: number | null }>();
-      for (const a of (analyticsRes.data ?? []) as Array<{ stock_id: string; as_of_date: string; return_1m: number | null; return_3m: number | null; return_6m: number | null; return_1y: number | null; volume_efficiency: number | null; crowded_ratio: number | null }>) {
+      const analyticsMap = new Map<string, {
+        return_1m: number | null; return_3m: number | null; return_6m: number | null; return_1y: number | null;
+        volume_efficiency: number | null; crowded_ratio: number | null;
+        ma5_slope: number | null; ma20_slope: number | null; green_red_volume_ratio_1m: number | null;
+      }>();
+      for (const a of ((analyticsRes.data ?? []) as unknown as Array<{
+        stock_id: string; as_of_date: string;
+        return_1m: number | null; return_3m: number | null; return_6m: number | null; return_1y: number | null;
+        volume_efficiency: number | null; crowded_ratio: number | null;
+        ma5_slope: number | null; ma20_slope: number | null; green_red_volume_ratio_1m: number | null;
+      }>)) {
         if (analyticsMap.has(a.stock_id)) continue; // first wins; we ordered desc
         analyticsMap.set(a.stock_id, a);
+      }
+      // Latest short-interest settlements per stock_id (already desc-ordered).
+      const interestByStock = new Map<string, number[]>();
+      for (const r of (interestRes.data ?? []) as Array<{ stock_id: string; settlement_date: string; short_interest: number | null }>) {
+        if (r.short_interest == null) continue;
+        const list = interestByStock.get(r.stock_id) ?? [];
+        if (list.length < 5) list.push(Number(r.short_interest));
+        interestByStock.set(r.stock_id, list);
       }
 
       const rows: ScreenerRow[] = stockRows.map((s) => {
         const q = quoteMap.get(s.id);
         const f = fundMap.get(s.id);
         const a = analyticsMap.get(s.id);
+        const interest = interestByStock.get(s.id) ?? [];
         const num = (v: unknown): number | null => (v == null ? null : Number(v));
         return {
           symbol: s.symbol,
@@ -1117,14 +1155,21 @@ export async function getScreenerRows(
           return1y: a ? num(a.return_1y) : null,
           volumeEfficiencyToday: a ? num(a.volume_efficiency) : null,
           crowdedRatio: a ? num(a.crowded_ratio) : null,
+          ma5Slope: a ? num(a.ma5_slope) : null,
+          ma20Slope: a ? num(a.ma20_slope) : null,
+          greenRedVolumeRatio1m: a ? num(a.green_red_volume_ratio_1m) : null,
+          shortInterestTrend: computeShortInterestTrend(interest),
         } satisfies ScreenerRow;
       });
 
-      return applyScreenerSort(applyScreenerFilters(rows, filters), sort).slice(0, SCREENER_LIMIT);
+      return applyScreenerSort(
+        applyScreenerFilters(rows, filters, interestByStock),
+        sort,
+      ).slice(0, SCREENER_LIMIT);
     },
     () =>
       applyScreenerSort(
-        applyScreenerFilters(getMockScreenerRows(), filters),
+        applyScreenerFilters(getMockScreenerRows(), filters, getMockShortInterestBySymbol()),
         sort,
       ).slice(0, SCREENER_LIMIT),
   );
@@ -1343,8 +1388,49 @@ export async function getStocksBySector(
   );
 }
 
-/** Null-safe filtering — null values pass when no constraint is specified. */
-function applyScreenerFilters(rows: ScreenerRow[], f: ScreenerFilters): ScreenerRow[] {
+/** Trend classification from a desc-ordered list of bi-weekly short-interest
+ *  settlements (most-recent first). Returns 'up' / 'down' / 'flat' when at
+ *  least two settlements exist, otherwise null.
+ *
+ *  For the screener filter, callers compare this single-label trend to the
+ *  requested direction ('up' / 'down'); the N-period test is applied at
+ *  filter time via `matchesShortInterestTrend`. */
+function computeShortInterestTrend(settlements: number[]): ScreenerRow['shortInterestTrend'] {
+  if (settlements.length < 2) return null;
+  const [latest, prev] = settlements;
+  if (latest == null || prev == null) return null;
+  if (latest > prev) return 'up';
+  if (latest < prev) return 'down';
+  return 'flat';
+}
+
+/** True when the latest N consecutive period-over-period comparisons all
+ *  move in `direction`. One period = one settlement gap (≈ 2 weeks). */
+function matchesShortInterestTrend(
+  settlements: number[],
+  filter: ShortInterestTrendFilter,
+): boolean {
+  const { direction, periods } = filter;
+  if (settlements.length < periods + 1) return false;
+  for (let i = 0; i < periods; i++) {
+    const a = settlements[i];
+    const b = settlements[i + 1];
+    if (a == null || b == null) return false;
+    if (direction === 'up' && !(a > b)) return false;
+    if (direction === 'down' && !(a < b)) return false;
+  }
+  return true;
+}
+
+/** Null-safe filtering — null values pass when no constraint is specified.
+ *  `interestBySymbol` carries the per-stock settlement history used by the
+ *  short-interest trend filter (kept off the ScreenerRow type so the UI never
+ *  sees it). */
+function applyScreenerFilters(
+  rows: ScreenerRow[],
+  f: ScreenerFilters,
+  interestBySymbol: Map<string, number[]> = new Map(),
+): ScreenerRow[] {
   return rows.filter((r) => {
     if (f.market && r.market !== f.market) return false;
     if (f.sector && r.sector !== f.sector) return false;
@@ -1362,6 +1448,26 @@ function applyScreenerFilters(rows: ScreenerRow[], f: ScreenerFilters): Screener
       f.crowdedRatioMin != null &&
       (r.crowdedRatio == null || r.crowdedRatio < f.crowdedRatioMin)
     ) {
+      return false;
+    }
+    // MA trend filters — slope > 0 means "up", ≤ 0 means "down".
+    // Slope is null on the first row of the analytics series, so a row
+    // with `r.ma5Slope == null` cannot match either 'up' or 'down' and
+    // the row falls out when the filter is set.
+    if (f.ma5Trend === 'up' && (r.ma5Slope == null || r.ma5Slope <= 0)) return false;
+    if (f.ma5Trend === 'down' && (r.ma5Slope == null || r.ma5Slope >= 0)) return false;
+    if (f.ma20Trend === 'up' && (r.ma20Slope == null || r.ma20Slope <= 0)) return false;
+    if (f.ma20Trend === 'down' && (r.ma20Slope == null || r.ma20Slope >= 0)) return false;
+    if (f.greenRed) {
+      const ratio = r.greenRedVolumeRatio1m;
+      if (ratio == null) return false;
+      if (f.greenRed.direction === 'green' && ratio < f.greenRed.threshold) return false;
+      if (f.greenRed.direction === 'red' && ratio * f.greenRed.threshold > 1) return false;
+    }
+    if (f.shortInterestTrend && !matchesShortInterestTrend(
+      interestBySymbol.get(r.symbol) ?? [],
+      f.shortInterestTrend,
+    )) {
       return false;
     }
     return true;

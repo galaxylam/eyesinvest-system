@@ -334,9 +334,9 @@ function computeIndicatorsAt(
   const last = closes[idx] ?? 0;
   const dateStr = bars[idx]?.time ?? new Date().toISOString().slice(0, 10);
 
-  const ma = (window: number): number | null => {
-    if (closes.length < window) return null;
-    const slice = closes.slice(-window);
+  const ma = (window: number, endIdx: number = closes.length - 1): number | null => {
+    if (endIdx + 1 < window) return null;
+    const slice = closes.slice(endIdx + 1 - window, endIdx + 1);
     return +(slice.reduce((s, v) => s + v, 0) / window).toFixed(4);
   };
 
@@ -460,6 +460,36 @@ function computeIndicatorsAt(
     }
   }
 
+  // MA5 / MA20 slope — signed delta vs the prior trading day. The "prior"
+  // MA here uses closes through idx-1 so we don't double-count today's bar.
+  // Returns null when the prior window doesn't have enough history (i.e. on
+  // the first row that has a ma5/ma20 value).
+  const ma5Prior = ma(5, idx);      // closed-over slice of length 5 ending at idx
+  const ma5Prev = ma(5, idx - 1);   // length 5 ending at idx-1
+  const ma5Slope =
+    ma5Prior != null && ma5Prev != null ? +(ma5Prior - ma5Prev).toFixed(4) : null;
+  const ma20Prior = ma(20, idx);
+  const ma20Prev = ma(20, idx - 1);
+  const ma20Slope =
+    ma20Prior != null && ma20Prev != null ? +(ma20Prior - ma20Prev).toFixed(4) : null;
+
+  // 1M green/red volume ratio — mean(volume on close>open bars) ÷
+  // mean(volume on close<open bars) over the trailing 30 trading days.
+  // Null until 30 days of history; null when no green OR no red bars in
+  // the window (preserves the "no signal" state).
+  let greenRedVolumeRatio1m: number | null = null;
+  if (idx >= 29) {
+    const window = bars.slice(idx - 29, idx + 1);
+    let greenSum = 0, greenCount = 0, redSum = 0, redCount = 0;
+    for (const b of window) {
+      if (b.close > b.open) { greenSum += b.volume; greenCount += 1; }
+      else if (b.close < b.open) { redSum += b.volume; redCount += 1; }
+    }
+    if (greenCount > 0 && redCount > 0) {
+      greenRedVolumeRatio1m = +((greenSum / greenCount) / (redSum / redCount)).toFixed(4);
+    }
+  }
+
   return {
     stockId: `${symbol}-${symbol}`, // stable fake id when no Supabase
     asOfDate: dateStr,
@@ -467,6 +497,8 @@ function computeIndicatorsAt(
     ma20,
     ma50,
     ma200,
+    ma5Slope,
+    ma20Slope,
     rsi14,
     macdLine,
     macdSignal,
@@ -480,6 +512,7 @@ function computeIndicatorsAt(
     return1y,
     volumeEfficiency: volumeEfficiency != null ? +volumeEfficiency.toFixed(4) : null,
     crowdedRatio,
+    greenRedVolumeRatio1m,
     relativeStrength: null,
   };
 }
@@ -932,6 +965,19 @@ function buildMockScreenerRow(symbol: string): ScreenerRow | null {
   const latest = analytics[analytics.length - 1] ?? null;
   const efficiency = getMockVolumeEfficiency(symbol);
   const crowded = getMockCrowdedRatio(symbol);
+  const shortSelling = getMockShortSelling(symbol);
+  // Short-interest settlements are desc-ordered by date in the mock series.
+  // The first ≤5 values drive the screener's "1/2/3-period trend" filter.
+  const interest = shortSelling?.series?.interest ?? [];
+  const interestTrend = (() => {
+    if (interest.length < 2) return null;
+    const latest = interest[0]?.shortInterest;
+    const prev = interest[1]?.shortInterest;
+    if (latest == null || prev == null) return null;
+    if (latest > prev) return 'up';
+    if (latest < prev) return 'down';
+    return 'flat';
+  })();
   return {
     symbol: detail.symbol,
     name: detail.name,
@@ -951,11 +997,33 @@ function buildMockScreenerRow(symbol: string): ScreenerRow | null {
     return1y: latest?.return1y ?? null,
     volumeEfficiencyToday: efficiency?.efficiencyToday ?? null,
     crowdedRatio: crowded?.ratio ?? null,
+    ma5Slope: latest?.ma5Slope ?? null,
+    ma20Slope: latest?.ma20Slope ?? null,
+    greenRedVolumeRatio1m: latest?.greenRedVolumeRatio1m ?? null,
+    shortInterestTrend: interestTrend,
   } satisfies ScreenerRow;
 }
 
 export function getMockScreenerRows(): ScreenerRow[] {
   return listMockSymbols().map(buildMockScreenerRow).filter((r): r is ScreenerRow => r != null);
+}
+
+/** Per-symbol map of desc-ordered short-interest settlements, mirroring the
+ *  Supabase path in `getScreenerRows`. Powers the mock fallback for the
+ *  "1/2/3-period trend" short-interest filter. */
+export function getMockShortInterestBySymbol(): Map<string, number[]> {
+  const out = new Map<string, number[]>();
+  for (const symbol of listMockSymbols()) {
+    const ss = getMockShortSelling(symbol);
+    if (!ss) continue;
+    const settlements: number[] = [];
+    for (const p of ss.series?.interest ?? []) {
+      if (p.shortInterest != null) settlements.push(p.shortInterest);
+      if (settlements.length >= 5) break;
+    }
+    if (settlements.length > 0) out.set(symbol, settlements);
+  }
+  return out;
 }
 
 /**

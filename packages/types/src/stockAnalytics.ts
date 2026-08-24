@@ -12,6 +12,10 @@ export interface StockAnalytics {
   ma20: number | null;
   ma50: number | null;
   ma200: number | null;
+  /** Signed delta of ma5 vs the prior trading day. Null on the first row of the series. Drives the screener "MA5 upward / downward" filter. */
+  ma5Slope: number | null;
+  /** Signed delta of ma20 vs the prior trading day. Null on the first row of the series. */
+  ma20Slope: number | null;
   /** 0..100. >70 conventionally overbought, <30 oversold. */
   rsi14: number | null;
   macdLine: number | null;
@@ -30,6 +34,8 @@ export interface StockAnalytics {
   volumeEfficiency: number | null;
   /** MA5(volume) / MA30(volume) for the latest day. Null until both windows have enough history. */
   crowdedRatio: number | null;
+  /** Trailing 30-day mean(volume on close>open bars) ÷ mean(volume on close<open bars). Null until 30 days of history. >1 = green bars traded more, <1 = red bars traded more. Drives the screener "1M green ≥ N% higher than red" filter. */
+  greenRedVolumeRatio1m: number | null;
   /** Trailing 1m return minus the stock's market benchmark (SPX for US, HSI for HK). Percent points. Populated only on the most-recent row. */
   relativeStrength: number | null;
 }

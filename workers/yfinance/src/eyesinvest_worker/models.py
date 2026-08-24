@@ -81,6 +81,13 @@ class StockAnalyticsRow(BaseModel):
     ma20: float | None = None
     ma50: float | None = None
     ma200: float | None = None
+    # Phase 3+ screener filter inputs — signed delta vs the prior trading day
+    # for the screener's "MA upward / downward" filter, and a 30-day
+    # mean(volume on green bars) ÷ mean(volume on red bars) for the
+    # "green ≥ N% higher than red" filter.
+    ma5_slope: float | None = None
+    ma20_slope: float | None = None
+    green_red_volume_ratio_1m: float | None = None
     rsi14: float | None = None
     macd_line: float | None = None
     macd_signal: float | None = None

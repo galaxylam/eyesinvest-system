@@ -13,6 +13,13 @@ Pure pandas / numpy — no external TA library. Indicators implemented:
   - Relative strength:      trailing return − market return (1m only,
                             populated on the most-recent row only — we
                             only refetch current SPX/HSI bars)
+  - MA slopes:              MA5_slope, MA20_slope — signed delta vs the
+                            prior trading day, used by the screener
+                            trend filters
+  - Green/red volume ratio: trailing 30d mean(volume on up-bars) ÷
+                            mean(volume on down-bars); used by the
+                            screener "1M green ≥ N% higher than red"
+                            filter
 
 The worker reads `ey_price_1d` for each stock, computes these for every
 trading day that has enough history, and upserts the result. Indicators
@@ -112,6 +119,27 @@ def _relative_strength(
     return round(stock_return_pct - market_return_pct, 6)
 
 
+def _green_red_volume_ratio_1m(
+    open_: pd.Series, close: pd.Series, volume: pd.Series, window: int = 30,
+) -> pd.Series:
+    """Trailing-30-day ratio of mean(volume on up-bars) to mean(volume on
+    down-bars). NaN when no green or no red bars are present in the window
+    — preserves the "no signal" state all the way to the UI.
+
+    Bars where close == open (dojis) are excluded from both sides; they
+    don't move the price and shouldn't move the ratio either.
+    """
+    is_green = (close > open_).astype(float)
+    is_red = (close < open_).astype(float)
+    green_vol_sum = (volume * is_green).rolling(window, min_periods=window).sum()
+    red_vol_sum = (volume * is_red).rolling(window, min_periods=window).sum()
+    green_count = is_green.rolling(window, min_periods=window).sum()
+    red_count = is_red.rolling(window, min_periods=window).sum()
+    green_avg = green_vol_sum / green_count.replace(0, np.nan)
+    red_avg = red_vol_sum / red_count.replace(0, np.nan)
+    return green_avg / red_avg.replace(0, np.nan)
+
+
 # ---------- main entry point -------------------------------------------------
 
 @dataclass
@@ -167,11 +195,20 @@ def compute_analytics(
         volume_series = pd.to_numeric(df["volume"], errors="coerce").astype(float)
     else:
         volume_series = pd.Series(0, index=df.index, dtype="float64")
+    if "open" in df.columns:
+        open_series = pd.to_numeric(df["open"], errors="coerce").astype(float)
+    else:
+        # Fallback to close — keeps the green/red ratio defined but yields
+        # ratio = 1 (no green/red distinction). Better than NaN across the
+        # whole history.
+        open_series = close.copy()
 
     df["ma5"] = close.rolling(5).mean()
     df["ma20"] = close.rolling(20).mean()
     df["ma50"] = close.rolling(50).mean()
     df["ma200"] = close.rolling(200).mean()
+    df["ma5_slope"] = df["ma5"].diff()
+    df["ma20_slope"] = df["ma20"].diff()
     df["rsi14"] = _rsi(close, 14)
 
     ema12 = _ema(close, 12)
@@ -192,6 +229,9 @@ def compute_analytics(
     # Phase 3+ sector-strength columns — same per-row pattern as above.
     df["volume_efficiency"] = _volume_efficiency(close, volume_series, shares_outstanding)
     df["crowded_ratio"] = _crowded_ratio(volume_series)
+    df["green_red_volume_ratio_1m"] = _green_red_volume_ratio_1m(
+        open_series, close, volume_series, window=30,
+    )
     df["relative_strength"] = pd.Series(np.nan, index=df.index, dtype="float64")
 
     # Relative strength is only meaningful for the most-recent row — we
@@ -213,6 +253,8 @@ def compute_analytics(
                 ma20=_maybe_float(r.get("ma20")),
                 ma50=_maybe_float(r.get("ma50")),
                 ma200=_maybe_float(r.get("ma200")),
+                ma5_slope=_maybe_float(r.get("ma5_slope")),
+                ma20_slope=_maybe_float(r.get("ma20_slope")),
                 rsi14=_maybe_float(r.get("rsi14")),
                 macd_line=_maybe_float(r.get("macd_line")),
                 macd_signal=_maybe_float(r.get("macd_signal")),
@@ -226,6 +268,7 @@ def compute_analytics(
                 return_1w=_maybe_float(r.get("return_1w")),
                 volume_efficiency=_maybe_float(r.get("volume_efficiency")),
                 crowded_ratio=_maybe_float(r.get("crowded_ratio")),
+                green_red_volume_ratio_1m=_maybe_float(r.get("green_red_volume_ratio_1m")),
                 relative_strength=_maybe_float(r.get("relative_strength")),
             )
         )
