@@ -11,6 +11,7 @@ Why an adapter:
 
 from __future__ import annotations
 
+import math
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -58,20 +59,37 @@ def fetch_daily_history(
         # idx is a Timestamp in exchange-local tz; we drop the time and keep date.
         trade_date = idx.date() if hasattr(idx, "date") else idx
         try:
-            bar = PriceBar(
-                stock_id=stock_id,
-                trade_date=trade_date,
-                open=float(row["Open"]),
-                high=float(row["High"]),
-                low=float(row["Low"]),
-                close=float(row["Close"]),
-                volume=int(row.get("Volume", 0) or 0),
-                currency=currency,
-                fetched_at=now,
-            )
+            open = float(row["Open"])
+            high = float(row["High"])
+            low = float(row["Low"])
+            close = float(row["Close"])
+            volume = int(row.get("Volume", 0) or 0)
         except (KeyError, ValueError, TypeError) as exc:
             logger.warning(f"{symbol}: skipping malformed row {trade_date}: {exc}")
             continue
+        # yfinance occasionally returns NaN for any OHLC field on newly-
+        # listed stocks, delisted tickers, or rows with no trades that day.
+        # NaN must NOT reach Supabase — stdlib json.dumps rejects it and
+        # would abort the whole 500-bar chunk. Drop the row instead.
+        if not (
+            math.isfinite(open)
+            and math.isfinite(high)
+            and math.isfinite(low)
+            and math.isfinite(close)
+        ):
+            logger.warning(f"{symbol}: skipping row {trade_date} with NaN OHLC")
+            continue
+        bar = PriceBar(
+            stock_id=stock_id,
+            trade_date=trade_date,
+            open=open,
+            high=high,
+            low=low,
+            close=close,
+            volume=volume,
+            currency=currency,
+            fetched_at=now,
+        )
         bars.append(bar)
     return bars
 
