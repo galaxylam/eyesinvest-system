@@ -33,6 +33,7 @@ from eyesinvest_worker.providers import (
     fetch_index_quote,
     fetch_quote_snapshot,
     sync_hkex_short_sales,
+    sync_hkex_short_sales_combined,
     sync_sfc_short_interest,
     sync_short_interest,
     sync_short_sales,
@@ -260,7 +261,7 @@ def sync_shorts() -> None:
     hk_sales: list = []
     hk_interest: list = []
     if hk_stocks:
-        hk_sales = sync_hkex_short_sales(client, hk_code_to_id)
+        hk_sales = sync_hkex_short_sales_combined(client, hk_code_to_id)
         time.sleep(cfg.price_throttle_seconds)
         last_iso = fetch_last_settlement_date(client, market="HK")
         last_settlement = _date.fromisoformat(last_iso) if last_iso else None

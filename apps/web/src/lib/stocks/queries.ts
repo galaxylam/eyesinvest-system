@@ -1491,20 +1491,24 @@ function applyScreenerSort(rows: ScreenerRow[], s: ScreenerSort): ScreenerRow[] 
 }
 
 // ============================================================================
-// Phase 5 — Short Selling (FINRA, US-only). HK stocks short-circuit upstream
-// at the row-lookup boundary so the chart can show its empty state.
+// Phase 5 — Short Selling (FINRA for US, HKEX daily + AM session for HK).
+// The same payload shape serves both markets; HK stocks add the AM session
+// KPIs + per-bar AM fields. The chart branches on `market` to render the
+// appropriate layout.
 // ============================================================================
 
 /**
- * US short-selling payload: daily Reg-SHO volume + bi-weekly short interest.
+ * Short-selling payload: daily turnover + bi-weekly short interest.
  * Joins `ey_short_sale_1d` and `ey_short_interest` against the stock id, then
  * computes `daysToCover` locally from the last 30 days of `ey_price_1d`
  * volume (we don't trust FINRA's own days-to-cover column).
  *
  * Works for both US (FINRA `regShoDaily` + `consolidatedShortInterest`)
- * and HK (HKEX daily + SFC weekly). `total_volume` is 0 for HK daily
- * rows so `shortPctOfVolume` is `null` on HK — the pill row degrades
- * to "—" gracefully.
+ * and HK (HKEX daily + HKEX morning-session + SFC weekly). `total_volume` is
+ * 0 for HK daily rows so `shortPctOfVolume` is `null` on HK — the pill row
+ * degrades to "—" gracefully and the chart renders absolute volume bars
+ * instead. The HK AM fields (`am_short_volume`, `am_short_value_hkd`) are
+ * populated by `sync_hkex_short_sales_combined` around 12:30 HKT.
  */
 export async function getShortSelling(
   symbol: string,
@@ -1524,12 +1528,15 @@ export async function getShortSelling(
 
       const stockId = stockRow.id;
 
-      // Three parallel reads: daily Reg-SHO + bi-weekly interest + 30d
-      // volume for days-to-cover.
+      // Three parallel reads: daily sale (full-day + AM) + bi-weekly interest
+      // + 30d volume for days-to-cover.
       const [saleRes, interestRes, volumeRes] = await Promise.all([
         supabase
           .from('ey_short_sale_1d')
-          .select('trade_date, short_volume, total_volume')
+          .select(
+            'trade_date, short_volume, total_volume, ' +
+              'am_short_volume, am_short_value_hkd',
+          )
           .eq('stock_id', stockId)
           .order('trade_date', { ascending: false })
           .limit(days),
@@ -1553,10 +1560,12 @@ export async function getShortSelling(
       const num = (v: unknown): number | null =>
         v == null ? null : Number(v);
 
-      const saleRaw = (saleRes.data ?? []) as Array<{
+      const saleRaw = ((saleRes.data ?? []) as unknown) as Array<{
         trade_date: string;
         short_volume: number;
         total_volume: number;
+        am_short_volume: number | null;
+        am_short_value_hkd: number | null;
       }>;
       const interestRaw = (interestRes.data ?? []) as Array<{
         settlement_date: string;
@@ -1587,6 +1596,8 @@ export async function getShortSelling(
             shortVolume: short,
             totalVolume: total,
             shortPctOfVolume: total > 0 ? +((short / total) * 100).toFixed(2) : null,
+            amShortVolume: num(r.am_short_volume),
+            amShortValueHkd: num(r.am_short_value_hkd),
           };
         })
         .reverse();
@@ -1614,11 +1625,25 @@ export async function getShortSelling(
       const asOfDate =
         latestSale?.date ?? latestInterest?.date ?? null;
 
+      // HK-only AM headlines. Only meaningful when latest day has full-day
+      // data; before full-day is published, full volume is 0 (placeholder)
+      // and the ratio would be undefined.
+      const todayFullVol = latestSale?.shortVolume ?? null;
+      const todayAmVol = latestSale?.amShortVolume ?? null;
+      const todayAmHkd = latestSale?.amShortValueHkd ?? null;
+      const todayAmPct =
+        todayAmVol != null && todayFullVol != null && todayFullVol > 0
+          ? +((todayAmVol / todayFullVol) * 100).toFixed(1)
+          : null;
+
       return {
         symbol: stockRow.symbol,
         market: stockRow.market as Market,
         todayShortPctOfVolume: latestSale?.shortPctOfVolume ?? null,
-        todayShortVolume: latestSale?.shortVolume ?? null,
+        todayShortVolume: todayFullVol,
+        todayAmShortVolume: todayAmVol,
+        todayAmShortValueHkd: todayAmHkd,
+        todayAmPctOfFullDay: todayAmPct,
         shortInterest: latestInterest?.shortInterest ?? null,
         shortInterestChangePct: latestInterest?.changePct ?? null,
         daysToCover: latestInterest?.daysToCover ?? null,

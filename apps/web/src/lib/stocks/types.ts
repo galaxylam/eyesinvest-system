@@ -153,21 +153,30 @@ export interface CrowdedRatio {
 }
 
 // ============================================================================
-// Short Selling (FINRA) — US-only. HK stocks short-circuit upstream to null.
+// Short Selling — US (FINRA Reg-SHO) + HK (HKEX daily + morning session).
+// US stocks drive the pct-of-volume bar; HK stocks drive an absolute-volume
+// histogram with a separate morning-session overlap bar.
 // ============================================================================
 
 /**
- * One bar on the daily Reg-SHO chart.
- *   shortPctOfVolume = short_volume / total_volume × 100
+ * One bar on the daily short-selling chart.
+ *   shortPctOfVolume = short_volume / total_volume × 100  (US only — null for HK)
+ *
+ * For HK rows, `shortVolume` and `amShortVolume` are absolute HKEX shares,
+ * and `totalVolume` is always 0 (HKEX does not publish total daily volume).
  */
 export interface ShortSellingPoint {
   date: string;
   /** shortVolume / totalVolume × 100. Null when totalVolume is 0. */
   shortPctOfVolume: number | null;
-  /** FINRA-reported short volume (shares). */
+  /** FINRA-reported short volume (US) or HKEX-reported full-day short volume (HK). */
   shortVolume: number;
-  /** FINRA-reported total volume (shares). */
+  /** FINRA-reported total volume (US only; HKEX doesn't publish this). */
   totalVolume: number;
+  /** HKEX morning-session short volume. Null until ~12:30 HKT, null for US. */
+  amShortVolume: number | null;
+  /** HKEX morning-session HKD turnover. Null until ~12:30 HKT, null for US. */
+  amShortValueHkd: number | null;
 }
 
 /** One bi-weekly settlement point from FINRA short-interest. */
@@ -182,11 +191,15 @@ export interface ShortInterestPoint {
 }
 
 /**
- * Combined US short-selling payload for the subplot. The header pills surface
- * `todayShortPctOfVolume` + `todayShortVolume` (daily KPIs) plus
- * `shortInterest` + change + daysToCover (bi-weekly KPIs). The chart renders
- * the bi-weekly short-interest line only; the daily series drives the
- * pills and is kept so the caller can chart it elsewhere later.
+ * Combined US + HK short-selling payload for the subplot. The header pills
+ * surface the daily KPIs (`todayShortPctOfVolume` for US, `todayShortVolume`
+ * for HK) plus HK's morning-session pills when available
+ * (`todayAmShortVolume`, `todayAmShortValueHkd`, `todayAmPctOfFullDay`).
+ * Bi-weekly short-interest KPIs (`shortInterest`, `shortInterestChangePct`,
+ * `daysToCover`) are shared across markets. The chart renders the bi-weekly
+ * short-interest line for both; the daily series is rendered as a
+ * pct-of-volume histogram for US and as an absolute-volume histogram with
+ * an AM overlap for HK.
  */
 export interface ShortSelling {
   symbol: string;
@@ -195,6 +208,12 @@ export interface ShortSelling {
   todayShortPctOfVolume: number | null;
   /** Latest daily short-volume amount in shares. Null when no daily data. */
   todayShortVolume: number | null;
+  /** HK-only. Latest AM-session short volume (shares). Null until ~12:30 HKT. */
+  todayAmShortVolume: number | null;
+  /** HK-only. Latest AM-session HKD turnover. Null until ~12:30 HKT. */
+  todayAmShortValueHkd: number | null;
+  /** HK-only. AM share of today's full-day turnover (0..100). Null until full-day is published. */
+  todayAmPctOfFullDay: number | null;
   /** Latest short interest (shares outstanding). Null when no bi-weekly data. */
   shortInterest: number | null;
   /** Change vs prior settlement, signed percent. Null when no prior. */

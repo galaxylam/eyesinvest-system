@@ -861,7 +861,9 @@ export function getMockCrowdedRatio(symbol: string, days = 252): CrowdedRatio | 
  * so the daily short % moves with whatever the symbol is being told.
  * Works for both US (FINRA) and HK (HKEX + SFC); HK mocks intentionally
  * leave `totalVolume` as 0 so `shortPctOfVolume` is `null` — mirrors
- * the real HKEX daily page that doesn't publish total daily volume.
+ * the real HKEX daily page that doesn't publish total daily volume. HK
+ * mocks add a deterministic `amShortVolume`/`amShortValueHkd` of 40–55%
+ * of full-day so the AM overlap bar has something to render.
  */
 export function getMockShortSelling(symbol: string): ShortSelling | null {
   const detail = getMockStockDetail(symbol);
@@ -876,6 +878,9 @@ export function getMockShortSelling(symbol: string): ShortSelling | null {
       market: detail.market,
       todayShortPctOfVolume: null,
       todayShortVolume: null,
+      todayAmShortVolume: null,
+      todayAmShortValueHkd: null,
+      todayAmPctOfFullDay: null,
       shortInterest: null,
       shortInterestChangePct: null,
       daysToCover: null,
@@ -895,11 +900,18 @@ export function getMockShortSelling(symbol: string): ShortSelling | null {
     // derived shortPctOfVolume falls back to "—" for HK.
     const totalForChart = isHK ? 0 : total;
     const short = Math.floor(total * (30 + rng() * 20) / 100);
+    // HK-only AM session: 40–55% of full-day short volume, with a
+    // rough HKD turnover proxy derived from the bar's close price.
+    const amShort = isHK ? Math.floor(short * (0.40 + rng() * 0.15)) : null;
+    const amHkd =
+      isHK && amShort != null ? Math.round(amShort * b.close) : null;
     return {
       date: b.time,
       shortVolume: short,
       totalVolume: totalForChart,
       shortPctOfVolume: totalForChart > 0 ? +(30 + rng() * 20).toFixed(2) : null,
+      amShortVolume: amShort,
+      amShortValueHkd: amHkd,
     };
   });
 
@@ -933,11 +945,23 @@ export function getMockShortSelling(symbol: string): ShortSelling | null {
   const latestSale = sale[sale.length - 1];
   const latestInterest = interest[interest.length - 1];
 
+  // HK AM share of today's full day.
+  const todayFullVol = latestSale?.shortVolume ?? null;
+  const todayAmVol = latestSale?.amShortVolume ?? null;
+  const todayAmHkd = latestSale?.amShortValueHkd ?? null;
+  const todayAmPct =
+    todayAmVol != null && todayFullVol != null && todayFullVol > 0
+      ? +((todayAmVol / todayFullVol) * 100).toFixed(1)
+      : null;
+
   return {
     symbol: detail.symbol,
     market: detail.market,
     todayShortPctOfVolume: latestSale?.shortPctOfVolume ?? null,
-    todayShortVolume: latestSale?.shortVolume ?? null,
+    todayShortVolume: todayFullVol,
+    todayAmShortVolume: todayAmVol,
+    todayAmShortValueHkd: todayAmHkd,
+    todayAmPctOfFullDay: todayAmPct,
     shortInterest: latestInterest?.shortInterest ?? null,
     shortInterestChangePct: latestInterest?.changePct ?? null,
     daysToCover: latestInterest?.daysToCover ?? null,

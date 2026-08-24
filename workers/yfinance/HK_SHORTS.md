@@ -8,7 +8,8 @@ public sources.
 
 | Dataset | HK source | HK cadence | Table written | Row shape |
 |---|---|---|---|---|
-| Daily aggregated short-sale turnover | HKEX public stats page | T+0 (post-16:00 HKT close) | `ey_short_sale_1d` (`market='HK'`) | `(stock_id, trade_date)` |
+| Daily aggregated short-sale turnover (full day) | HKEX public stats page | T+0 (post-16:00 HKT close) | `ey_short_sale_1d` (`market='HK'`) | `(stock_id, trade_date)` |
+| Morning-session short-sale turnover (AM) | HKEX public stats page | T+0 (around 12:00–13:00 HKT lunch break) | `ey_short_sale_1d` (`market='HK'`) — same row, AM columns | `(stock_id, trade_date)` |
 | Weekly aggregated reportable short positions | SFC weekly CSVs | Weekly (Friday) | `ey_short_interest` (`market='HK'`) | `(stock_id, settlement_date)` |
 
 US rows are written as `(market='US', source='finra')`. HK daily rows
@@ -16,11 +17,15 @@ land as `(market='HK', source='hkex')` and HK weekly rows as
 `(market='HK', source='sfc')`. The `ey_short_sale_1d.short_value_hkd`
 column (reserved in migration 0005 for exactly this purpose) is
 populated for HK rows with the published HKD turnover; `total_volume`
-is `0` because the HKEX public page does not publish it.
+is `0` because the HKEX public page does not publish it. The AM fields
+(`am_short_volume`, `am_short_value_hkd`, `am_published_at` —
+migration 0012) are populated by `sync_hkex_short_sales_combined` when
+the morning-session page is published; both AM and full-day data land
+in the **same row** via a single upsert.
 
 ## Sources — endpoints and cadence
 
-### 1. HKEX daily short-selling turnover
+### 1. HKEX daily short-selling turnover (full day)
 
 - **Main Board**:
   <https://www.hkex.com.hk/eng/stat/smstat/ssturnover/ncms/ASHTMAIN.HTM>
@@ -29,32 +34,52 @@ is `0` because the HKEX public page does not publish it.
   (same `/ncms/` directory as Main Board — there is no separate `gcms/`
   subdirectory for short-selling turnover; GEM pages are named `ASHTGEM.HTM`,
   not `gcms/ASHTMAIN.HTM`)
-- Two HTTP requests per `sync-shorts` run — no per-symbol loop.
 - Pages are rendered as a `<pre><font size='1'>` plain-text block; each
   row is `code name shortSellShares shortSellTurnoverHKD pct%`.
 - Populated on a schedule HKEX controls:
   - **Normal trading day** (Mon–Fri except eves): data appears at
     ~**16:00 HKT** (full-day close).
-  - **Half-day eves** (Christmas Eve, New Year's Eve, Lunar New Year's Eve):
-    the morning-session short-selling totals appear at **12:00 HKT** on a
-    separate "up to morning close" page (URL contains the
-    `up to morning close today` phrase); the full-day totals appear at
-    16:00 HKT on the normal page.
-- **Outside** those windows the page shows a
+- **Outside** that window the page shows a
   `"…will be available after day close…"` placeholder. The provider
   detects that phrase and returns an empty list without raising — running
-  `sync-shorts` outside trading hours is a no-op for HK daily.
+  `sync-shorts` outside trading hours is a no-op for HK full-day.
 
-> **Half-day eves are not currently wired.** If you care about the
-> 12:00 HKT morning-session data on Christmas/NYE/LNYE eves, that's a
-> separate URL on HKEX (named something like `ASHTMAIN_M.HTM` —
-> unverified) and a separate code path. Tell me when you want it.
+### 1b. HKEX morning-session short-selling turnover (AM)
+
+- **Main Board**:
+  <https://www.hkex.com.hk/eng/stat/smstat/ssturnover/ncms/MSHTMAIN.HTM>
+- **GEM**:
+  <https://www.hkex.com.hk/eng/stat/smstat/ssturnover/ncms/MSHTGEM.HTM>
+- Same row layout as the full-day page; the parser and parser-side regex
+  are shared with the full-day path.
+- Populated around **12:00–13:00 HKT** (lunch break). Pre-lunch the page
+  shows its own placeholder text ("will be available after …"); the
+  provider matches the substring `will be available after` and returns
+  no rows.
+- Two additional HTTP requests per `sync-shorts` run; `MSHTGEM.HTM` is
+  unverified — if it 404s, the AM Main Board page alone covers the bulk
+  of HKEX-tracked stocks and the empty GEM result is benign.
+
+The combined sync (`sync_hkex_short_sales_combined`) fetches all four
+pages (full-day Main + GEM, AM Main + GEM), merges into one
+`ShortSaleRow` per stock, and upserts to `ey_short_sale_1d`. Behavior
+matrix:
+
+| Full-day | AM | Row written |
+|---|---|---|
+| published | published | both `short_volume`/`short_value_hkd` + `am_*` populated |
+| published | not yet | full-day only; `am_*` = NULL |
+| not yet (mid-day) | published | `short_volume=0` (placeholder) + `am_*` populated |
+| not yet | not yet | no row |
+
+The chart uses `short_volume=0` as the "no full-day bar yet" sentinel so
+only the AM bar renders between lunch and close.
 
 > **Important:** the per-row column layout above is the documented
 > expectation. **It has not been verified against a populated weekday
-> file during this implementation** (today, a Sunday, returns the
-> placeholder). On the first weekday after ship, eyeball the parsed
-> rows by running `sync-shorts` and grep'ing logs for
+> file during this implementation** (the day this was first written, a
+> Sunday, returned the placeholder). On the first weekday after ship,
+> eyeball the parsed rows by running `sync-shorts` and grep'ing logs for
 > `HKEX * ASHTMAIN: N rows parsed` — if the count is wildly off or the
 > regex silently rejects every row, adjust the `_ROW_RE` in
 > `providers/hkex_daily.py`.
@@ -145,9 +170,10 @@ The "0 daily" line on a weekend is normal.
   `None` on any HTTP/timeout/OSError; the caller logs a warning and
   returns an empty list. The `sync-shorts` command always reaches its
   "done" log line.
-- **Placeholder detection** on the HKEX page: the literal substring
-  `will be available after day close` signals an unpopulated day and is
-  not an error.
+- **Placeholder detection** on the HKEX pages: the substring
+  `will be available after day close` (full-day) or
+  `will be available after` (morning-session) signals an unpopulated
+  page and is not an error.
 - **GEM parse failures** would be visible via `HKEX GEM ASHTMAIN: 0
   rows parsed` (or a row count that doesn't match the rough expected
   ~100). Investigate the regex in `providers/hkex_daily.py::_ROW_RE`.

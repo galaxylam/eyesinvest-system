@@ -287,7 +287,11 @@
         "elevated": "偏高",
         "normal": "正常",
         "empty": "此股票暫無放空資料。",
-        "noFloat": "尚未有放空資料。"
+        "noFloat": "尚未有放空資料。",
+        "amSession": "上午",
+        "amVol": "上午短倉量",
+        "amHkd": "上午短倉金額",
+        "amRatio": "上午佔全日 {pct}"
       }
     },
     "chartRange": {

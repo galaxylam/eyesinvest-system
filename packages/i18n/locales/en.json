@@ -287,7 +287,11 @@
         "elevated": "Elevated",
         "normal": "Normal",
         "empty": "Short-selling data is not available for this symbol.",
-        "noFloat": "No short-selling data yet."
+        "noFloat": "No short-selling data yet.",
+        "amSession": "Morning session",
+        "amVol": "AM short vol",
+        "amHkd": "AM short HKD",
+        "amRatio": "AM = {pct} of day"
       }
     },
     "chartRange": {

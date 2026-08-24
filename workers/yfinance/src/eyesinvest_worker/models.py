@@ -156,6 +156,11 @@ class ShortSaleRow(BaseModel):
     US source is FINRA `regShoDaily` (T+1, has `total_volume`).
     HK source is HKEX public daily page (T+0 — populated only after
     16:00 HKT market close; `total_volume` is not published, leave 0).
+
+    The AM fields are populated by `sync_hkex_short_sales_combined` only when
+    HKEX has published the morning-session page (MSHTMAIN / MSHTGEM — around
+    12:00–13:00 HKT lunch break). NULL for US rows and for HK rows captured
+    before the AM page goes live.
     """
 
     stock_id: str
@@ -166,6 +171,10 @@ class ShortSaleRow(BaseModel):
     total_volume: int = 0
     short_value_hkd: float | None = None  # HKEX HKD turnover; NULL for US
     source: str = "finra"
+    # HKEX morning session — see local/supabase/migrations/0012_hkex_am_short_selling.sql
+    am_short_volume: int | None = None
+    am_short_value_hkd: float | None = None
+    am_published_at: datetime | None = None
 
 
 class ShortInterestRow(BaseModel):

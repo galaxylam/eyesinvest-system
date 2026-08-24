@@ -287,7 +287,11 @@
         "elevated": "偏高",
         "normal": "正常",
         "empty": "暂无该股做空数据。",
-        "noFloat": "尚无做空数据。"
+        "noFloat": "尚无做空数据。",
+        "amSession": "上午",
+        "amVol": "上午短仓量",
+        "amHkd": "上午短仓金额",
+        "amRatio": "上午占全日 {pct}"
       }
     },
     "chartRange": {

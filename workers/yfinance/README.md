@@ -50,7 +50,7 @@ Convenience from repo root: `pnpm worker:sync` (= `cd workers/yfinance && uv run
 | `sync-fundamentals` | `ey_stocks` | `market_cap`, `pe_ratio`, `dividend_yield`, 52-wk range, etc. |
 | `sync-analytics` | `ey_stock_analytics` | MA / RSI / MACD / volatility / drawdown / returns |
 | `sync-indexes` | `ey_index_quote` | Latest SPX + HSI daily quotes |
-| `sync-shorts` | `ey_short_sale_1d`, `ey_short_interest` | US-only FINRA short-selling (see `SYNC_SHORTS.md`) |
+| `sync-shorts` | `ey_short_sale_1d`, `ey_short_interest` | US FINRA + HK HKEX daily + SFC weekly (see `SYNC_SHORTS.md`, `HK_SHORTS.md`). HK rows additionally capture the HKEX morning-session turnover (`am_short_volume`, `am_short_value_hkd`, `am_published_at`) when the AM page is published around lunch break. |
 | `sync-sector-strength` | `ey_stock_analytics`, `ey_sector_daily` | Phase 3+ — per-stock `volume_efficiency` / `crowded_ratio` / `relative_strength` + sector-level rollup. Refetches SPX + HSI trailing bars from yfinance (~2 calls) to compute market-relative returns. |
 | `all` | all of the above | Sequential |
 
