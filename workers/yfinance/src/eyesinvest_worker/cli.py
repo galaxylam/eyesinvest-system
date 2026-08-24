@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 import time
 
 import click
@@ -402,8 +401,8 @@ def sync_all() -> None:
         "sync-sector-strength",
     ):
         logger.info(f"=== {cmd} ===")
-        # Re-invoke this CLI as a subprocess so config + logging re-init cleanly.
-        rc = sys.exit(cli_main([cmd]))
+        # Re-invoke this CLI in-process so config + logging re-init cleanly.
+        rc = cli_main([cmd])
         if rc != 0:
             raise click.ClickException(f"{cmd} failed (exit {rc})")
 
