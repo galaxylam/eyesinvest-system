@@ -1180,8 +1180,10 @@ function applyScreenerSort(rows: ScreenerRow[], s: ScreenerSort): ScreenerRow[] 
  * computes `daysToCover` locally from the last 30 days of `ey_price_1d`
  * volume (we don't trust FINRA's own days-to-cover column).
  *
- * Returns `null` immediately when the stock is HK — keeps the caller free of
- * market branching.
+ * Works for both US (FINRA `regShoDaily` + `consolidatedShortInterest`)
+ * and HK (HKEX daily + SFC weekly). `total_volume` is 0 for HK daily
+ * rows so `shortPctOfVolume` is `null` on HK — the pill row degrades
+ * to "—" gracefully.
  */
 export async function getShortSelling(
   symbol: string,
@@ -1198,8 +1200,6 @@ export async function getShortSelling(
         .maybeSingle();
       if (stockErr) throw stockErr;
       if (!stockRow) return null;
-      // US-only — keep HK fast.
-      if (stockRow.market !== 'US') return null;
 
       const stockId = stockRow.id;
 

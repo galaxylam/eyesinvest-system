@@ -182,3 +182,20 @@ def upsert_short_interest(client: Client, rows: list[ShortInterestRow]) -> int:
         written += len(resp.data or chunk)
     logger.info(f"upserted {written} rows into ey_short_interest")
     return written
+
+
+def fetch_last_settlement_date(client: Client, market: str) -> str | None:
+    """Return the ISO date string of the most recent ``settlement_date``
+    in ``ey_short_interest`` for ``market`` ('HK' or 'US'). ``None`` when
+    the table has no rows for that market (first-ever run → full backfill).
+    """
+    resp = (
+        client.table("ey_short_interest")
+        .select("settlement_date")
+        .eq("market", market)
+        .order("settlement_date", desc=True)
+        .limit(1)
+        .execute()
+    )
+    rows = resp.data or []
+    return rows[0]["settlement_date"] if rows else None

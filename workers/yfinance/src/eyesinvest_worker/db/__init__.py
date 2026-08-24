@@ -2,6 +2,7 @@
 
 from eyesinvest_worker.db.supabase import (
     fetch_active_stocks,
+    fetch_last_settlement_date,
     fetch_price_history,
     make_client,
     upsert_analytics_rows,
@@ -15,6 +16,7 @@ from eyesinvest_worker.db.supabase import (
 
 __all__ = [
     "fetch_active_stocks",
+    "fetch_last_settlement_date",
     "fetch_price_history",
     "make_client",
     "upsert_analytics_rows",

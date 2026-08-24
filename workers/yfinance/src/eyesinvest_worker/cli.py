@@ -8,9 +8,10 @@ import time
 import click
 
 from eyesinvest_worker import __version__
-from eyesinvest_worker.config import WorkerConfig
+from eyesinvest_worker.config import WorkerConfig, hk_stock_symbol_to_code
 from eyesinvest_worker.db import (
     fetch_active_stocks,
+    fetch_last_settlement_date,
     fetch_price_history,
     make_client,
     upsert_analytics_rows,
@@ -29,6 +30,8 @@ from eyesinvest_worker.providers import (
     fetch_fundamentals,
     fetch_index_quote,
     fetch_quote_snapshot,
+    sync_hkex_short_sales,
+    sync_sfc_short_interest,
     sync_short_interest,
     sync_short_sales,
 )
@@ -186,50 +189,99 @@ def sync_indexes() -> None:
 
 @main.command("sync-shorts")
 def sync_shorts() -> None:
-    """Pull FINRA daily Reg-SHO + bi-weekly short-interest for US stocks.
+    """Pull short-selling data for every tracked stock across US + HK.
 
-    Prefers the authenticated Developer API (`regShoDaily` +
-    `consolidatedShortInterest`) when FINRA_API_CLIENT_ID + SECRET are set;
-    otherwise falls back to the public CDN TXT files. HK stocks are skipped
-    (FINRA is US-only). Failures are logged + skipped rather than aborting
-    the run.
+    US path:
+        FINRA `regShoDaily` + `consolidatedShortInterest`. API path is
+        used when both FINRA_API_CLIENT_ID + SECRET are set; otherwise
+        the public CDN TXT files are used.
+
+    HK daily:
+        Scrape HKEX's public `ASHTMAIN.HTM` pages (Main Board + GEM)
+        once each. The page is only populated after HK market close
+        (16:00 HKT); we tolerate the placeholder gracefully.
+
+    HK weekly:
+        SFC weekly CSVs of aggregated reportable short positions. Reads
+        the SFC index page, downloads each CSV newer than the highest
+        `settlement_date` already stored — first-ever run backfills
+        SFC_BACKFILL_DAYS (default 180).
+
+    Failures are logged + skipped rather than aborting the run.
     """
+    from datetime import date as _date
+
     cfg = _load_config()
     configure_logging(cfg.log_level)
     client = make_client(cfg.supabase_url, cfg.supabase_service_role_key)
     stocks = fetch_active_stocks(client)
     us_stocks = [s for s in stocks if s.market == "US"]
-    symbol_map = {s.symbol: s.id for s in us_stocks}
-    logger.info(f"syncing FINRA short-selling for {len(us_stocks)} US stocks")
+    hk_stocks = [s for s in stocks if s.market == "HK"]
+    us_symbol_map = {s.symbol: s.id for s in us_stocks}
+    hk_code_to_id = {
+        code: stock_id
+        for code, stock_id in (
+            (hk_stock_symbol_to_code(s.symbol), s.id) for s in hk_stocks
+        )
+        if code is not None
+    }
+    logger.info(
+        f"syncing short-selling for {len(us_stocks)} US + "
+        f"{len(hk_stocks)} HK stocks ({len(hk_code_to_id)} HK codes known)"
+    )
 
     use_api = bool(cfg.finra_api_client_id and cfg.finra_api_secret)
-    sales: list = []
-    interest: list = []
+    us_sales: list = []
+    us_interest: list = []
     days = cfg.short_sale_history_days
 
     if use_api:
-        logger.info("using authenticated FINRA Developer API")
+        logger.info("US: using authenticated FINRA Developer API")
         api = FinraClient(cfg.finra_api_client_id or "", cfg.finra_api_secret or "")
         try:
-            sales = sync_short_sales_via_api(api, symbol_map, days=days)
-            interest = sync_short_interest_via_api(api, symbol_map)
+            us_sales = sync_short_sales_via_api(api, us_symbol_map, days=days)
+            us_interest = sync_short_interest_via_api(api, us_symbol_map)
         except FinraApiError as exc:
             logger.warning(
                 f"FINRA API path failed ({exc}); falling back to public CDN"
             )
-            sales = sync_short_sales(client, symbol_map, days=days)
+            us_sales = sync_short_sales(client, us_symbol_map, days=days)
             time.sleep(cfg.price_throttle_seconds)
-            interest = sync_short_interest(client, symbol_map, lookback_days=60)
+            us_interest = sync_short_interest(client, us_symbol_map, lookback_days=60)
     else:
-        logger.info("FINRA_API_CLIENT_ID/SECRET not set; using public CDN")
-        sales = sync_short_sales(client, symbol_map, days=days)
+        logger.info("US: FINRA_API_CLIENT_ID/SECRET not set; using public CDN")
+        us_sales = sync_short_sales(client, us_symbol_map, days=days)
         time.sleep(cfg.price_throttle_seconds)
-        interest = sync_short_interest(client, symbol_map, lookback_days=60)
+        us_interest = sync_short_interest(client, us_symbol_map, lookback_days=60)
 
-    sales_written = upsert_short_sales(client, sales)
-    interest_written = upsert_short_interest(client, interest)
+    # --- HK ---
+    hk_sales: list = []
+    hk_interest: list = []
+    if hk_stocks:
+        hk_sales = sync_hkex_short_sales(client, hk_code_to_id)
+        time.sleep(cfg.price_throttle_seconds)
+        last_iso = fetch_last_settlement_date(client, market="HK")
+        last_settlement = _date.fromisoformat(last_iso) if last_iso else None
+        hk_interest = sync_sfc_short_interest(
+            client,
+            hk_code_to_id,
+            last_settlement=last_settlement,
+            backfill_days=cfg.sfc_backfill_days,
+            force_backfill=cfg.shorts_force_sfc_backfill,
+        )
+
+    us_sales_written = upsert_short_sales(client, us_sales)
+    us_interest_written = upsert_short_interest(client, us_interest)
+    if hk_sales or hk_interest:
+        logger.info(
+            f"HK upserts: {len(hk_sales)} daily → ey_short_sale_1d, "
+            f"{len(hk_interest)} weekly → ey_short_interest"
+        )
+    hk_sales_written = upsert_short_sales(client, hk_sales)
+    hk_interest_written = upsert_short_interest(client, hk_interest)
     logger.info(
-        f"sync-shorts done — {sales_written} daily + {interest_written} bi-weekly rows"
+        f"sync-shorts done — US {us_sales_written}d / {us_interest_written}w, "
+        f"HK {hk_sales_written}d / {hk_interest_written}w"
     )
 
 

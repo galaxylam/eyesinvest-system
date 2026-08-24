@@ -212,10 +212,20 @@ psql -d eyesinvest -c "
 
 ## Out of scope
 
-- **HKEX daily short-sale data** — no public API; revisit when HK
-  equities demand this signal.
 - **Short squeeze detector / squeeze scoring** — analytical layer on top
   of these tables, separate iteration.
 - **Real-time intraday short volume** — FINRA publishes daily only.
 - **Pre-2018 historical backfill** — outside the consolidated CNMS
   window.
+
+## HK coverage
+
+`sync-shorts` also writes short-selling data for HK-listed stocks:
+
+- **Daily** short-sale turnover → HKEX public `ASHTMAIN.HTM` pages
+  (Main Board + GEM), stored as `(market='HK', source='hkex')`.
+- **Weekly** aggregated reportable short positions → SFC weekly CSVs
+  (2012-09-14 → present), stored as `(market='HK', source='sfc')`.
+
+See **`HK_SHORTS.md`** for endpoint patterns, env vars, cadence, the
+unverified-parser caveat, and a step-by-step verification recipe.

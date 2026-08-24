@@ -6,6 +6,24 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def hk_stock_symbol_to_code(symbol: str) -> int | None:
+    """Map an `ey_stocks.symbol` to the numeric HKEX 5-digit stock code.
+
+    Examples:
+        "0700.HK"  -> 700
+        "0001.HK"  -> 1
+        "12345.HK" -> 12345
+        "AAPL"     -> None   (not an HK symbol)
+        "0700"     -> None   (missing suffix)
+    """
+    if not symbol.endswith(".HK"):
+        return None
+    digits = symbol[:-3]
+    if not digits.isdigit():
+        return None
+    return int(digits)
+
+
 class WorkerConfig(BaseSettings):
     """Reads from .env (CWD) and process environment."""
 
@@ -36,3 +54,19 @@ class WorkerConfig(BaseSettings):
     # How many years of daily bars to pull per ticker. Bumped from 2 → 3 so
     # MA200 / 1y return / 3y drawdown all have enough history to populate.
     history_period_years: int = 3
+
+    # HK shorts — knobs for the HKEX daily + SFC weekly paths in sync-shorts.
+    # HKEX public page only carries the current day's aggregate, so the
+    # history-days knob is mostly defensive (worker only ever fetches today).
+    hkex_short_sale_history_days: int = Field(
+        default=5, alias="HK_SHORTS_HISTORY_DAYS"
+    )
+    # How many SFC weekly CSVs to backfill on first-ever run. Default 180
+    # days ≈ 26 weeks ≈ ~6 months; raise to fetch the full 2012-09-14 →
+    # present archive in one shot.
+    sfc_backfill_days: int = Field(default=180, alias="SFC_BACKFILL_DAYS")
+    # Force a full SFC backfill on the next sync-shorts run, even if rows
+    # already exist. Set via env var SHORTS_FORCE_SFC_BACKFILL=1.
+    shorts_force_sfc_backfill: bool = Field(
+        default=False, alias="SHORTS_FORCE_SFC_BACKFILL"
+    )

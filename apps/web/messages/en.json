@@ -218,15 +218,15 @@
     "charts": {
       "shortSelling": {
         "title": "Short selling",
-        "subtitle": "Bi-weekly short interest synced with the main chart's range",
+        "subtitle": "Short interest synced with the main chart's range",
         "today": "Today %",
         "dailyAmount": "Today vol",
         "shortInt": "Short int",
         "change": "Δ from prior",
         "elevated": "Elevated",
         "normal": "Normal",
-        "empty": "Short-selling data is only available for US-listed stocks.",
-        "noFloat": "No FINRA data yet."
+        "empty": "Short-selling data is not available for this symbol.",
+        "noFloat": "No short-selling data yet."
       }
     },
     "chartRange": {

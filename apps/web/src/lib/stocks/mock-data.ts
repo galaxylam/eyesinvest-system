@@ -723,12 +723,14 @@ export function getMockCrowdedRatio(symbol: string, days = 252): CrowdedRatio | 
 /**
  * Mock short-selling payload. Uses the same seeded synthetic price series
  * so the daily short % moves with whatever the symbol is being told.
- * Returns `null` for HK tickers to match the upstream US-only short-circuit.
+ * Works for both US (FINRA) and HK (HKEX + SFC); HK mocks intentionally
+ * leave `totalVolume` as 0 so `shortPctOfVolume` is `null` — mirrors
+ * the real HKEX daily page that doesn't publish total daily volume.
  */
 export function getMockShortSelling(symbol: string): ShortSelling | null {
   const detail = getMockStockDetail(symbol);
   if (!detail) return null;
-  if (detail.market !== 'US') return null;
+  const isHK = detail.market === 'HK';
 
   // 252 trading days so the chart always covers the longest picker window.
   const bars = generateSyntheticPriceSeries(symbol, 252);
@@ -752,13 +754,16 @@ export function getMockShortSelling(symbol: string): ShortSelling | null {
   const rng = makeRng(symbolSeed(`${symbol}-shorts`));
   const sale: ShortSellingPoint[] = bars.map((b) => {
     const total = b.volume;
-    const pct = 30 + rng() * 20; // 30%–50% of volume is short
-    const short = Math.floor(total * (pct / 100));
+    // HKEX daily page only publishes short volume + HKD turnover, not
+    // total daily volume — mirror that in the mock so the UI's
+    // derived shortPctOfVolume falls back to "—" for HK.
+    const totalForChart = isHK ? 0 : total;
+    const short = Math.floor(total * (30 + rng() * 20) / 100);
     return {
       date: b.time,
       shortVolume: short,
-      totalVolume: total,
-      shortPctOfVolume: total > 0 ? +pct.toFixed(2) : null,
+      totalVolume: totalForChart,
+      shortPctOfVolume: totalForChart > 0 ? +(30 + rng() * 20).toFixed(2) : null,
     };
   });
 

@@ -93,23 +93,37 @@ class IndexQuote(BaseModel):
 
 
 class ShortSaleRow(BaseModel):
-    """One row of `ey_short_sale_1d` (FINRA Reg-SHO daily)."""
+    """One row of `ey_short_sale_1d`.
+
+    US source is FINRA `regShoDaily` (T+1, has `total_volume`).
+    HK source is HKEX public daily page (T+0 — populated only after
+    16:00 HKT market close; `total_volume` is not published, leave 0).
+    """
 
     stock_id: str
     trade_date: date
-    market: Literal["US"] = "US"
+    market: Literal["US", "HK"] = "US"
     short_volume: int
     short_exempt_volume: int = 0
-    total_volume: int
+    total_volume: int = 0
+    short_value_hkd: float | None = None  # HKEX HKD turnover; NULL for US
     source: str = "finra"
 
 
 class ShortInterestRow(BaseModel):
-    """One row of `ey_short_interest` (FINRA bi-weekly)."""
+    """One row of `ey_short_interest` (positions outstanding).
+
+    US source is FINRA `consolidatedShortInterest` (bi-weekly).
+    HK source is SFC weekly aggregated reportable short positions — see
+    `providers/sfc_weekly.py`. SFC's published CSV only carries current
+    aggregated positions, so `days_to_cover` / `change_pct` /
+    `prior_short_interest` are left NULL on HK rows; the UI's
+    query-time derivation still computes a usable `daysToCover`.
+    """
 
     stock_id: str
     settlement_date: date
-    market: Literal["US"] = "US"
+    market: Literal["US", "HK"] = "US"
     short_interest: int
     days_to_cover: float | None = None
     prior_short_interest: int | None = None

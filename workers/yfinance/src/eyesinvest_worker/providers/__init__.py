@@ -2,7 +2,9 @@
 doesn't import it directly."""
 
 from eyesinvest_worker.providers.analytics import compute_analytics
+from eyesinvest_worker.providers.hkex_daily import sync_hkex_short_sales
 from eyesinvest_worker.providers.indexes import fetch_index_quote
+from eyesinvest_worker.providers.sfc_weekly import sync_sfc_short_interest
 from eyesinvest_worker.providers.shorts import (
     fetch_finra_short_interest,
     fetch_finra_short_sale,
@@ -23,6 +25,8 @@ __all__ = [
     "fetch_fundamentals",
     "fetch_index_quote",
     "fetch_quote_snapshot",
+    "sync_hkex_short_sales",
+    "sync_sfc_short_interest",
     "sync_short_interest",
     "sync_short_sales",
 ]
