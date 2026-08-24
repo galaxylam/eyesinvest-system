@@ -40,6 +40,21 @@ from eyesinvest_worker.models import StockAnalyticsRow
 
 # ---------- helpers ----------------------------------------------------------
 
+@dataclass
+class ShortInterestInput:
+    """Minimal SI input passed by sync-squeeze — desc-sorted, length >= 1.
+
+    Mirrors `ey_short_interest` row shape but only the columns the squeeze
+    formula needs. `change_pct` is FINRA-API populated; CDN-only rows have
+    it NULL and `_si_change_pct_1w` falls back to a derivation against
+    `prior_short_interest`.
+    """
+
+    short_interest: int
+    prior_short_interest: int | None = None  # NULL when only 1 SI row available
+    change_pct: float | None = None
+
+
 def _ema(series: pd.Series, span: int) -> pd.Series:
     return series.ewm(span=span, adjust=False).mean()
 
@@ -140,6 +155,111 @@ def _green_red_volume_ratio_1m(
     return green_avg / red_avg.replace(0, np.nan)
 
 
+# ----- Phase 3+ squeeze-score helpers ----------------------------------------
+
+
+def _days_to_cover(
+    short_interest: int | None, avg_daily_volume_30d: float | None,
+) -> float | None:
+    """DTC = SI / 30d avg daily volume. None when either input missing or
+    avg volume is non-positive (no trading days in window)."""
+    if short_interest is None or avg_daily_volume_30d is None or avg_daily_volume_30d <= 0:
+        return None
+    return round(short_interest / avg_daily_volume_30d, 2)
+
+
+def _si_change_pct_1w(rows: list[ShortInterestInput]) -> float | None:
+    """Prioritized derivation:
+      1. ``rows[0].change_pct`` if FINRA API populated it.
+      2. Otherwise compute ``(latest - prior) / prior * 100`` from the
+         row's own ``prior_short_interest`` column (FINRA gives this even
+         on CDN-only paths).
+      3. Otherwise derive from ``rows[1].short_interest`` when the worker
+         pulled 2+ rows (the CDN-only path stores this implicitly).
+      4. None when no prior settlement is available.
+    """
+    if not rows:
+        return None
+    latest = rows[0]
+    if latest.change_pct is not None:
+        return latest.change_pct
+    if latest.prior_short_interest is not None and latest.prior_short_interest > 0:
+        return round(
+            (latest.short_interest - latest.prior_short_interest)
+            / latest.prior_short_interest * 100.0, 4,
+        )
+    if len(rows) >= 2 and rows[1].short_interest > 0:
+        return round(
+            (latest.short_interest - rows[1].short_interest)
+            / rows[1].short_interest * 100.0, 4,
+        )
+    return None
+
+
+def _am_ratio(
+    am_short_volume: int | None, full_short_volume: int | None,
+) -> float | None:
+    """HK-only AM share of full-day short volume (%). None when either
+    input is missing or full_short_volume is non-positive (no full-day row
+    captured yet — same case as the AM overlap bar missing in the UI)."""
+    if am_short_volume is None or full_short_volume is None or full_short_volume <= 0:
+        return None
+    return round(am_short_volume / full_short_volume * 100.0, 2)
+
+
+def _volume_spike(volume: pd.Series, short_window: int = 5, long_window: int = 30) -> pd.Series:
+    """mean(volume[-short_window:]) ÷ mean(volume[-long_window:]). NaN
+    until either rolling mean has enough history (5 days / 30 days).
+    """
+    ma_short = volume.rolling(short_window, min_periods=short_window).mean()
+    ma_long = volume.rolling(long_window, min_periods=long_window).mean()
+    return ma_short / ma_long.replace(0, np.nan)
+
+
+def _clip01(x: float | None, lo: float, hi: float) -> float:
+    """Linear-normalise ``x`` from ``[lo, hi]`` to ``[0, 1]`` and clip.
+
+    None contributes 0 — caller decides whether to write NULL or 0.
+    """
+    if x is None or hi == lo:
+        return 0.0
+    return max(0.0, min(1.0, (x - lo) / (hi - lo)))
+
+
+def _squeeze_score(
+    dtc: float | None,
+    si_chg_1w: float | None,
+    drawdown: float | None,
+    vol_spike: float | None,
+    am_ratio: float | None,
+) -> float | None:
+    """0..100 composite. None when every component is None — the caller
+    surfaces "no data" instead of a misleading 0.
+
+    Components (each normalised to [0, 1]):
+      0.30 × DTC        (0..10 trading days)
+      0.25 × SI Δ 1W    (-30..+30 %)
+      0.20 × |drawdown| (0..30 % of peak; drawdown is fed in already-negative)
+      0.15 × vol spike  (1×..5×)
+      0.10 × AM ratio   (40..80 %, HK only — null for US)
+    """
+    # drawdown is a negative fraction (e.g. -0.18 = -18%). The component
+    # wants "how deep is the drawdown?" — i.e. magnitude, normalised over
+    # a 0..0.30 (0%..30%) range. Feed -drawdown when the caller passed
+    # the raw value.
+    drawdown_mag = -drawdown if drawdown is not None else None
+    parts = [
+        0.30 * _clip01(dtc,           0,   10),
+        0.25 * _clip01(si_chg_1w,   -30,   30),
+        0.20 * _clip01(drawdown_mag,  0, 0.30),  # fraction, not percent
+        0.15 * _clip01(vol_spike,     1,    5),
+        0.10 * _clip01(am_ratio,     40,   80),
+    ]
+    if all(p == 0.0 for p in parts):
+        return None
+    return round(sum(parts) * 100.0, 2)
+
+
 # ---------- main entry point -------------------------------------------------
 
 @dataclass
@@ -154,6 +274,8 @@ def compute_analytics(
     *,
     shares_outstanding: int | None = None,
     market_returns: dict[str, float] | None = None,
+    short_interest_rows: list[ShortInterestInput] | None = None,
+    latest_short_sale: tuple[int | None, int | None] | None = None,
 ) -> ComputeResult | None:
     """`bars` is a list of {trade_date, close, ...} dicts, ANY order.
 
@@ -167,6 +289,15 @@ def compute_analytics(
     recent row only — we only refetch current SPX/HSI bars, so historical
     rows cannot have a meaningful RS. When None or empty, every row's
     `relative_strength` is null.
+
+    `short_interest_rows` (optional) — desc-sorted latest N (`N` is 1 or 2)
+    SI rows for the stock. Drives `squeeze_dtc`, `squeeze_si_chg_1w`.
+    Pass None from `sync-analytics` (the squeeze columns then stay null —
+    no regressions). Only `sync-squeeze` should pass them.
+
+    `latest_short_sale` (optional) — `(am_short_volume, short_volume)` of
+    the most-recent `ey_short_sale_1d` row. Drives `squeeze_am_ratio`
+    (HK-only signal). For US rows, leave None.
 
     Returns rows for every date that has enough history to compute at
     least one indicator. Most-recent date becomes the "current" snapshot.
@@ -234,6 +365,12 @@ def compute_analytics(
     )
     df["relative_strength"] = pd.Series(np.nan, index=df.index, dtype="float64")
 
+    # Phase 3+ squeeze-score components — per-row trailing-window series so
+    # any historical `as_of_date` can carry the latest breakdown. The
+    # composite `squeeze_score` itself is constant across rows (driven by
+    # stock-level inputs that don't change day-to-day).
+    df["volume_spike"] = _volume_spike(volume_series)
+
     # Relative strength is only meaningful for the most-recent row — we
     # only fetched today's market returns, not historical SPX/HSI bars.
     last_date = df["trade_date"].iloc[-1]
@@ -242,6 +379,28 @@ def compute_analytics(
     rs_today = _relative_strength(last_return_1m, market_return_1m)
     if rs_today is not None:
         df.loc[df.index[-1], "relative_strength"] = rs_today
+
+    # Squeeze-score stock-level inputs — once per call. The 30d avg
+    # denominator for DTC is computed from the same df the breakdown rows
+    # read from, so every as_of_date gets the same DTC (DTC is a stock-
+    # level concept, not per-day).
+    if len(volume_series) >= 30:
+        avg_vol_30d = float(volume_series.iloc[-30:].mean())
+    else:
+        avg_vol_30d = None
+    squeeze_dtc = _days_to_cover(
+        short_interest_rows[0].short_interest if short_interest_rows else None,
+        avg_vol_30d,
+    )
+    squeeze_si_chg_1w = _si_change_pct_1w(short_interest_rows or [])
+    squeeze_am_ratio = _am_ratio(*latest_short_sale) if latest_short_sale else None
+    squeeze_score = _squeeze_score(
+        dtc=squeeze_dtc,
+        si_chg_1w=squeeze_si_chg_1w,
+        drawdown=_maybe_float(df["max_drawdown_30d"].iloc[-1]) if len(df) else None,
+        vol_spike=_maybe_float(df["volume_spike"].iloc[-1]) if len(df) else None,
+        am_ratio=squeeze_am_ratio,
+    )
 
     rows: list[StockAnalyticsRow] = []
     for _, r in df.iterrows():
@@ -270,6 +429,12 @@ def compute_analytics(
                 crowded_ratio=_maybe_float(r.get("crowded_ratio")),
                 green_red_volume_ratio_1m=_maybe_float(r.get("green_red_volume_ratio_1m")),
                 relative_strength=_maybe_float(r.get("relative_strength")),
+                squeeze_score=squeeze_score,
+                squeeze_dtc=squeeze_dtc,
+                squeeze_si_chg_1w=squeeze_si_chg_1w,
+                squeeze_drawdown_30d=_maybe_float(r.get("max_drawdown_30d")),
+                squeeze_volume_spike=_maybe_float(r.get("volume_spike")),
+                squeeze_am_ratio=squeeze_am_ratio,
             )
         )
 

@@ -104,6 +104,17 @@ class StockAnalyticsRow(BaseModel):
     volume_efficiency: float | None = None
     crowded_ratio: float | None = None
     relative_strength: float | None = None
+    # Phase 3+ short-squeeze score — nullable so pre-existing rows stay valid.
+    # All six are populated by `sync-squeeze` (see providers/analytics.py);
+    # NULL on rows written by `sync-analytics` alone (no short inputs passed).
+    # `squeeze_score` is also NULL when every component is NULL — never a
+    # synthetic zero. See docs/SQUEEZE.md for the formula.
+    squeeze_score: float | None = None
+    squeeze_dtc: float | None = None
+    squeeze_si_chg_1w: float | None = None
+    squeeze_drawdown_30d: float | None = None
+    squeeze_volume_spike: float | None = None
+    squeeze_am_ratio: float | None = None
     source: str = "worker"
 
 

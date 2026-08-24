@@ -21,6 +21,8 @@ interface ScreenerPageProps {
     ret1m?: string;
     eff?: string;
     crowd?: string;
+    /** Short-squeeze score lower bound (0..100). */
+    sq?: string;
     /** MA5 trend: 'up' | 'down' */
     ma5?: string;
     /** MA20 trend: 'up' | 'down' */
@@ -42,6 +44,7 @@ const SORT_COLUMNS: ScreenerSortColumn[] = [
   'return1m',
   'changePercent',
   'volume',
+  'squeezeScore',
 ];
 
 function parseFilters(sp: Awaited<ScreenerPageProps['searchParams']>): ScreenerFilters {
@@ -71,6 +74,10 @@ function parseFilters(sp: Awaited<ScreenerPageProps['searchParams']>): ScreenerF
   if (sp.crowd) {
     const n = Number(sp.crowd);
     if (Number.isFinite(n) && n >= 0) f.crowdedRatioMin = n;
+  }
+  if (sp.sq) {
+    const n = Number(sp.sq);
+    if (Number.isFinite(n) && n >= 0 && n <= 100) f.squeezeMin = n;
   }
   if (sp.ma5 === 'up' || sp.ma5 === 'down') f.ma5Trend = sp.ma5;
   if (sp.ma20 === 'up' || sp.ma20 === 'down') f.ma20Trend = sp.ma20;

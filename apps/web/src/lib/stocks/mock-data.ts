@@ -21,6 +21,7 @@ import type {
   ShortInterestPoint,
   ShortSelling,
   ShortSellingPoint,
+  SqueezeScore,
   StockDetail,
   StockSearchResult,
   VolumeAggregates,
@@ -971,6 +972,99 @@ export function getMockShortSelling(symbol: string): ShortSelling | null {
 }
 
 // ============================================================================
+// Phase 5 — Short Squeeze score (per-stock 0..100 composite).
+// Mirrors the worker-side `_squeeze_score` formula (docs/SQUEEZE.md) but
+// uses mock-derived inputs — kept in lockstep with `workers/yfinance/src/
+// eyesinvest_worker/providers/analytics.py::_squeeze_score` so the mock
+// panels behave like the real ones.
+// ============================================================================
+
+function _clip01(x: number | null, lo: number, hi: number): number {
+  if (x == null || hi === lo) return 0;
+  return Math.max(0, Math.min(1, (x - lo) / (hi - lo)));
+}
+
+/**
+ * Mock short-squeeze payload for a symbol. Derived deterministically from
+ * the same synthetic price series + short-selling mock the screener uses,
+ * so re-rendering the page produces the same score.
+ *
+ * Returns `null` only when the symbol is unknown — a real stock with
+ * insufficient data still gets a payload with `score: null` so the panel
+ * can render the "Squeeze score is not available" state.
+ */
+export function getMockSqueeze(symbol: string): SqueezeScore | null {
+  const detail = getMockStockDetail(symbol);
+  if (!detail) return null;
+
+  const ss = getMockShortSelling(symbol);
+  const bars = generateSyntheticPriceSeries(symbol, 252);
+
+  // Need at least 30 trading days for DTC / drawdown / vol-spike.
+  if (bars.length < 30) {
+    return {
+      symbol: detail.symbol,
+      market: detail.market,
+      score: null,
+      regime: null,
+      daysToCover: null,
+      siChangePct1w: null,
+      drawdown30d: null,
+      volumeSpike: null,
+      amRatio: null,
+      asOfDate: null,
+    } satisfies SqueezeScore;
+  }
+
+  const avgVol30 = bars.slice(-30).reduce((s, b) => s + b.volume, 0) / 30;
+  const avgVol5 = bars.slice(-5).reduce((s, b) => s + b.volume, 0) / 5;
+  const peak30 = Math.max(...bars.slice(-30).map((b) => b.close));
+  const lastBar = bars[bars.length - 1];
+  const lastClose = lastBar ? lastBar.close : peak30;
+
+  const daysToCover =
+    ss?.shortInterest != null && avgVol30 > 0 ? ss.shortInterest / avgVol30 : null;
+  const siChangePct1w = ss?.shortInterestChangePct ?? null;
+  const drawdown30d = peak30 > 0 ? (lastClose - peak30) / peak30 : null;
+  const volumeSpike = avgVol30 > 0 ? avgVol5 / avgVol30 : null;
+  const amRatio = detail.market === 'HK' ? ss?.todayAmPctOfFullDay ?? null : null;
+
+  // Same component weights as the worker (see docs/SQUEEZE.md).
+  const parts = [
+    0.30 * _clip01(daysToCover, 0, 10),
+    0.25 * _clip01(siChangePct1w, -30, 30),
+    0.20 * _clip01(drawdown30d != null ? -drawdown30d : null, 0, 0.30),  // fraction
+    0.15 * _clip01(volumeSpike, 1, 5),
+    0.10 * _clip01(amRatio, 40, 80),
+  ];
+  const allZero = parts.every((p) => p === 0);
+  const rawScore = allZero ? null : Math.round(parts.reduce((s, p) => s + p, 0) * 100 * 100) / 100;
+
+  const regime = rawScore == null
+    ? null
+    : rawScore >= 70
+      ? 'high'
+      : rawScore >= 50
+        ? 'elevated'
+        : rawScore >= 30
+          ? 'normal'
+          : 'low';
+
+  return {
+    symbol: detail.symbol,
+    market: detail.market,
+    score: rawScore,
+    regime,
+    daysToCover,
+    siChangePct1w,
+    drawdown30d,
+    volumeSpike,
+    amRatio,
+    asOfDate: ss?.asOfDate ?? null,
+  } satisfies SqueezeScore;
+}
+
+// ============================================================================
 // Screener — denormalised one-row-per-stock mock. Combines quote + fundamentals
 // + latest analytics for every stock in the mock universe so the screener page
 // has the same shape regardless of Supabase availability.
@@ -990,6 +1084,7 @@ function buildMockScreenerRow(symbol: string): ScreenerRow | null {
   const efficiency = getMockVolumeEfficiency(symbol);
   const crowded = getMockCrowdedRatio(symbol);
   const shortSelling = getMockShortSelling(symbol);
+  const squeeze = getMockSqueeze(symbol);
   // Short-interest settlements are desc-ordered by date in the mock series.
   // The first ≤5 values drive the screener's "1/2/3-period trend" filter.
   const interest = shortSelling?.series?.interest ?? [];
@@ -1025,6 +1120,7 @@ function buildMockScreenerRow(symbol: string): ScreenerRow | null {
     ma20Slope: latest?.ma20Slope ?? null,
     greenRedVolumeRatio1m: latest?.greenRedVolumeRatio1m ?? null,
     shortInterestTrend: interestTrend,
+    squeezeScore: squeeze?.score ?? null,
   } satisfies ScreenerRow;
 }
 

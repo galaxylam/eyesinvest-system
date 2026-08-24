@@ -14,6 +14,7 @@ and a forward-looking map of what each phase will add.
 | Market cap, P/E, dividend yield, 52-wk range | Yahoo Finance | `ey_stocks.*` columns | `sync-fundamentals` |
 | Top movers (derived) | Postgres view | `ey_v_top_movers` | (auto from quote snapshots) |
 | Technical indicators (MA / RSI / MACD / vol / drawdown / returns) | derived from `ey_price_1d` | `ey_stock_analytics` | `sync-analytics` |
+| Short-squeeze score (DTC + SI Δ 1W + 30D drawdown + vol spike + HK AM share) | derived from `ey_short_interest` + `ey_short_sale_1d` + `ey_price_1d` | `ey_stock_analytics` (6 nullable columns) | `sync-squeeze` |
 | Reference indices (SPX, HSI) | Yahoo Finance | `ey_index_quote` | `sync-indexes` |
 
 **Stock prices, sector strengths, news, and AI analysis are different
@@ -54,8 +55,16 @@ Expected tail:
 [INFO] sync-quotes done — 30 snapshots written
 [INFO] sync-fundamentals done — 30 stocks updated
 [INFO] sync-analytics done — XXXX indicator rows written
+[INFO] sync-shorts done — US 1260d / 70w, HK 17d / 11w
+[INFO] sync-squeeze done — 7560 indicator rows written, 28 stocks with a numeric score
+[INFO] sync-sector-strength done — 30 stocks updated
 [INFO] sync-indexes done — 2 index rows written
 ```
+
+The "N stocks with a numeric score" count on `sync-squeeze` is `< 30` on a
+fresh database (no prior `ey_short_interest` to derive SI Δ 1W from) and
+converges to `30` within 1–2 weeks of regular `sync-shorts` runs. See
+[`docs/SQUEEZE.md`](./SQUEEZE.md) for the full formula.
 
 ---
 
@@ -69,8 +78,10 @@ Expected tail:
 | `sync-prices` | once per trading day, ~30 min after US close (~17:00 ET) | Daily OHLC bars; intraday bars aren't tracked yet | `uv run python -m eyesinvest_worker sync-prices` |
 | `sync-fundamentals` | weekly (e.g. Sunday night) | Market cap / P/E / dividend yield / 52-wk range change slowly | `uv run python -m eyesinvest_worker sync-fundamentals` |
 | `sync-analytics` | daily, right after `sync-prices` | Drives the AnalyticsPanel on every stock detail page | `uv run python -m eyesinvest_worker sync-analytics` |
+| `sync-shorts` | daily, after `sync-analytics` | US FINRA + HK HKEX/SFC short-selling data (see [`workers/yfinance/HK_SHORTS.md`](../workers/yfinance/HK_SHORTS.md)) | `uv run python -m eyesinvest_worker sync-shorts` |
+| `sync-squeeze` | daily, after `sync-shorts` | Per-stock 0..100 squeeze score — DTC + SI Δ 1W + drawdown + volume spike + HK AM share; surfaced on the stock detail page (SqueezeCard) and as a screener filter. Regime bands: ≥70 high, ≥50 elevated, ≥30 normal, <30 low (see [`docs/SQUEEZE.md`](./SQUEEZE.md)) | `uv run python -m eyesinvest_worker sync-squeeze` |
 | `sync-indexes` | daily, after US close + at 09:00 HKT | Powers the Market Summary tiles (SPX, HSI) | `uv run python -m eyesinvest_worker sync-indexes` |
-| **All five** | once per day (manual) | Convenience — runs the five above in sequence | `pnpm worker:sync` |
+| **All commands** | once per day (manual) | Convenience — now 8 steps in sequence (prices + quotes + fundamentals + analytics + shorts + squeeze + sector-strength + indexes) | `pnpm worker:sync` |
 
 ### Market-hours notes
 
@@ -249,7 +260,7 @@ streaming for tick-level data.
 ## Quick command reference
 
 ```bash
-# Full sync (prices + quotes + fundamentals + analytics + indexes)
+# Full sync (8 steps: prices + quotes + fundamentals + analytics + shorts + squeeze + sector-strength + indexes)
 pnpm worker:sync
 
 # Just refresh the Top Movers / stock header

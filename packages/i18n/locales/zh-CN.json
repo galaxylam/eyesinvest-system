@@ -182,7 +182,11 @@
       "siInc3": "3 期增加",
       "siDec1": "1 期减少",
       "siDec2": "2 期减少",
-      "siDec3": "3 期减少"
+      "siDec3": "3 期减少",
+      "squeezeScore": "轧空分数",
+      "sq40": "≥ 40（含普通）",
+      "sq60": "≥ 60（含偏高）",
+      "sq80": "仅 ≥ 80（高）"
     },
     "col": {
       "symbol": "代号",
@@ -195,7 +199,8 @@
       "yield": "股息率",
       "return1m": "1 个月",
       "efficiency": "效率",
-      "crowded": "拥挤"
+      "crowded": "拥挤",
+      "squeeze": "轧空"
     }
   },
   "stock": {
@@ -293,6 +298,26 @@
         "amHkd": "上午短仓金额",
         "amRatio": "上午占全日 {pct}"
       }
+    },
+    "squeezePanel": {
+      "title": "轧空信号",
+      "subtitle": "计算时间：{date}",
+      "regimeHigh": "高",
+      "regimeElevated": "偏高",
+      "regimeNormal": "普通",
+      "regimeLow": "低",
+      "regimeUnknown": "无数据",
+      "dtc": "轧空天数",
+      "dtcHint": "做空 ÷ 30 日均量",
+      "siChg1w": "周变化",
+      "siChg1wHint": "做空累积速度",
+      "drawdown": "30 日回撤",
+      "drawdownHint": "自 30 日高点",
+      "volSpike": "量能放大",
+      "volSpikeHint": "5 日 ÷ 30 日均量",
+      "amRatio": "上午 / 全日",
+      "amRatioHint": "上午量占全日比例",
+      "unavailable": "暂无该股轧空分数。"
     },
     "chartRange": {
       "label": "图表区间",

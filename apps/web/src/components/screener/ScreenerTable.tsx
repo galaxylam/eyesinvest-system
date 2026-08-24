@@ -38,7 +38,8 @@ interface ColumnSpec {
     | 'col.yield'
     | 'col.return1m'
     | 'col.efficiency'
-    | 'col.crowded';
+    | 'col.crowded'
+    | 'col.squeeze';
   align?: 'left' | 'right';
 }
 
@@ -54,6 +55,7 @@ const COLUMNS: ColumnSpec[] = [
   { sortColumn: 'return1m', labelKey: 'col.return1m', align: 'right' },
   { sortColumn: null, labelKey: 'col.efficiency', align: 'right' },
   { sortColumn: null, labelKey: 'col.crowded', align: 'right' },
+  { sortColumn: 'squeezeScore', labelKey: 'col.squeeze', align: 'right' },
 ];
 
 /**
@@ -230,6 +232,21 @@ function Row({
         )}
       >
         {formatRatio(row.crowdedRatio)}
+      </td>
+      <td
+        className={clsx(
+          'px-3 py-2 text-right tabular font-mono text-2xs',
+          (() => {
+            const s = row.squeezeScore;
+            if (s == null) return 'text-fg-subtle';
+            // Mirror SqueezeCard regime bands: ≥70 rose, ≥50 amber, else fg.
+            if (s >= 70) return 'text-rose-500';
+            if (s >= 50) return 'text-amber-500';
+            return 'text-fg';
+          })(),
+        )}
+      >
+        {row.squeezeScore == null ? '—' : Math.round(row.squeezeScore)}
       </td>
     </tr>
   );

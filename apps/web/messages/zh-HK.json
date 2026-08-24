@@ -182,7 +182,11 @@
       "siInc3": "3 期增加",
       "siDec1": "1 期減少",
       "siDec2": "2 期減少",
-      "siDec3": "3 期減少"
+      "siDec3": "3 期減少",
+      "squeezeScore": "軋空分數",
+      "sq40": "≥ 40（含普通）",
+      "sq60": "≥ 60（含偏高）",
+      "sq80": "僅 ≥ 80（高）"
     },
     "col": {
       "symbol": "代號",
@@ -195,7 +199,8 @@
       "yield": "股息率",
       "return1m": "1 個月",
       "efficiency": "效率",
-      "crowded": "擁擠"
+      "crowded": "擁擠",
+      "squeeze": "軋空"
     }
   },
   "stock": {
@@ -293,6 +298,26 @@
         "amHkd": "上午短倉金額",
         "amRatio": "上午佔全日 {pct}"
       }
+    },
+    "squeezePanel": {
+      "title": "軋空訊號",
+      "subtitle": "計算時間：{date}",
+      "regimeHigh": "高",
+      "regimeElevated": "偏高",
+      "regimeNormal": "普通",
+      "regimeLow": "低",
+      "regimeUnknown": "無資料",
+      "dtc": "軋空天數",
+      "dtcHint": "放空 ÷ 30 日均量",
+      "siChg1w": "週變化",
+      "siChg1wHint": "放空累積速度",
+      "drawdown": "30 日回撤",
+      "drawdownHint": "自 30 日高點",
+      "volSpike": "量能放大",
+      "volSpikeHint": "5 日 ÷ 30 日均量",
+      "amRatio": "上午 / 全日",
+      "amRatioHint": "上午量佔全日比例",
+      "unavailable": "此股票暫無軋空分數。"
     },
     "chartRange": {
       "label": "圖表區間",

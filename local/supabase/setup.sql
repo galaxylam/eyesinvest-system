@@ -501,6 +501,22 @@ alter table public.ey_short_sale_1d
   add column if not exists am_short_volume     bigint,
   add column if not exists am_short_value_hkd  numeric(18,6),
   add column if not exists am_published_at     timestamptz;
+
+-- ============================================================================
+-- Phase 3+ short-squeeze score — see 0013_short_squeeze.sql
+-- ============================================================================
+
+alter table public.ey_stock_analytics
+  add column if not exists squeeze_score          numeric(5,2),
+  add column if not exists squeeze_dtc            numeric(6,2),
+  add column if not exists squeeze_si_chg_1w      numeric(8,4),
+  add column if not exists squeeze_drawdown_30d   numeric(8,6),
+  add column if not exists squeeze_volume_spike   numeric(6,2),
+  add column if not exists squeeze_am_ratio       numeric(5,2);
+
+create index if not exists idx_ey_stock_analytics_squeeze_score
+  on public.ey_stock_analytics (as_of_date desc, squeeze_score desc)
+  where squeeze_score is not null;
 -- ============================================================================
 -- EyesInvest — Phase 1 seed data
 --

@@ -12,6 +12,8 @@ from eyesinvest_worker.config import WorkerConfig, hk_stock_symbol_to_code
 from eyesinvest_worker.db import (
     fetch_active_stocks,
     fetch_last_settlement_date,
+    fetch_latest_short_interest,
+    fetch_latest_short_sale,
     fetch_price_history,
     make_client,
     upsert_analytics_rows,
@@ -38,6 +40,7 @@ from eyesinvest_worker.providers import (
     sync_short_interest,
     sync_short_sales,
 )
+from eyesinvest_worker.providers.analytics import ShortInterestInput
 from eyesinvest_worker.providers.finra_api import (
     FinraApiError,
     FinraClient,
@@ -316,9 +319,78 @@ def sync_sector_strength() -> None:
     )
 
 
+@main.command("sync-squeeze")
+def sync_squeeze() -> None:
+    """Compute the short-squeeze score per stock and upsert onto ey_stock_analytics.
+
+    Reads ``ey_price_1d`` (30d ADV for DTC), ``ey_short_interest`` (DTC +
+    SI Δ 1W), and the most-recent ``ey_short_sale_1d`` row (HK AM-ratio).
+    Runs after ``sync-analytics`` (price history fresh) and ``sync-shorts``
+    (short-interest + AM fresh). See ``docs/SQUEEZE.md`` for the formula.
+
+    Stock-level squeeze inputs (``short_interest_rows``,
+    ``latest_short_sale``) are passed to ``compute_analytics``; the
+    per-row ``StockAnalyticsRow`` carries 6 nullable squeeze columns plus
+    the latest composite ``squeeze_score``. Upsert uses the existing
+    ``upsert_analytics_rows`` path — PostgREST partial-row upsert leaves
+    other columns untouched.
+    """
+    cfg = _load_config()
+    configure_logging(cfg.log_level)
+    client = make_client(cfg.supabase_url, cfg.supabase_service_role_key)
+    stocks = fetch_active_stocks(client)
+    logger.info(f"computing squeeze scores for {len(stocks)} stocks")
+
+    total = 0
+    scored = 0
+    for i, s in enumerate(stocks, start=1):
+        rows = fetch_price_history(client, s.id)
+        if not rows:
+            logger.warning(f"squeeze [{i}/{len(stocks)}] {s.symbol}: no price history")
+            continue
+        si_rows = fetch_latest_short_interest(client, s.id, limit=2)
+        sale_row = fetch_latest_short_sale(client, s.id)
+        si_inputs = [
+            ShortInterestInput(
+                short_interest=r["short_interest"],
+                prior_short_interest=r.get("prior_short_interest"),
+                change_pct=r.get("change_pct"),
+            )
+            for r in si_rows
+        ]
+        latest_sale = (
+            (sale_row.get("am_short_volume"), sale_row.get("short_volume"))
+            if sale_row
+            else None
+        )
+        result = compute_analytics(
+            stock_id=s.id,
+            bars=rows,
+            short_interest_rows=si_inputs,
+            latest_short_sale=latest_sale,
+        )
+        if result and result.rows:
+            total += upsert_analytics_rows(client, result.rows)
+            score = result.rows[-1].squeeze_score
+            if score is not None:
+                scored += 1
+            logger.info(
+                f"squeeze [{i}/{len(stocks)}] {s.symbol}: "
+                f"score={score if score is not None else 'n/a'}"
+            )
+        else:
+            logger.warning(f"squeeze [{i}/{len(stocks)}] {s.symbol}: no analytics rows")
+        time.sleep(cfg.price_throttle_seconds)
+
+    logger.info(
+        f"sync-squeeze done — {total} indicator rows written, "
+        f"{scored} stocks with a numeric score"
+    )
+
+
 @main.command("all")
 def sync_all() -> None:
-    """Run every sync command in sequence: prices → quotes → fundamentals → analytics → indexes → shorts → sector-strength."""
+    """Run every sync command in sequence: prices → quotes → fundamentals → analytics → indexes → shorts → squeeze → sector-strength."""
     for cmd in (
         "sync-prices",
         "sync-quotes",
@@ -326,6 +398,7 @@ def sync_all() -> None:
         "sync-analytics",
         "sync-indexes",
         "sync-shorts",
+        "sync-squeeze",
         "sync-sector-strength",
     ):
         logger.info(f"=== {cmd} ===")

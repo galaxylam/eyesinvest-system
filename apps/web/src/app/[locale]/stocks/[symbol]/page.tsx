@@ -7,6 +7,7 @@ import {
   getQuote,
   getRelativeStrength,
   getShortSelling,
+  getSqueeze,
   getStockAnalytics,
   getStockDetail,
   getStockFundamentals,
@@ -19,6 +20,7 @@ import { KeyStats } from '@/components/stocks/KeyStats';
 import { RangePicker, type ChartRange } from '@/components/stocks/RangePicker';
 import { StockChartStack } from '@/components/stocks/StockChartStack';
 import { StockHeader } from '@/components/stocks/StockHeader';
+import { SqueezeCard } from '@/components/stocks/SqueezeCard';
 import { StockTabs } from '@/components/stocks/tabs/StockTabs';
 
 interface StockPageProps {
@@ -66,6 +68,7 @@ export default async function StockPage({ params, searchParams }: StockPageProps
     volumeEfficiencyRes,
     crowdedRatioRes,
     shortSellingRes,
+    squeezeRes,
   ] = await Promise.all([
     getStockDetail(decodedSymbol),
     getQuote(decodedSymbol),
@@ -81,6 +84,8 @@ export default async function StockPage({ params, searchParams }: StockPageProps
     getCrowdedRatio(decodedSymbol, { days: CHART_DAYS }),
     // FINRA: short-circuit upstream to null for HK stocks.
     getShortSelling(decodedSymbol, { days: CHART_DAYS }),
+    // Phase 5 — short-squeeze score (single-day summary, no days window).
+    getSqueeze(decodedSymbol),
   ]);
 
   const stock = detailRes.data;
@@ -95,6 +100,7 @@ export default async function StockPage({ params, searchParams }: StockPageProps
   const volumeEfficiency = volumeEfficiencyRes.data;
   const crowdedRatio = crowdedRatioRes.data;
   const shortSelling = shortSellingRes.data;
+  const squeeze = squeezeRes.data;
   const latestAnalytics = analyticsSeries[analyticsSeries.length - 1] ?? null;
   const maSeries = extractMaSeries(analyticsSeries);
 
@@ -148,6 +154,8 @@ export default async function StockPage({ params, searchParams }: StockPageProps
         />
 
         <KeyStats currency={stock.currency} fundamentals={fundamentals} range52W={range52W} />
+
+        <SqueezeCard squeeze={squeeze} />
 
         <AnalyticsPanel currency={stock.currency} analytics={latestAnalytics} />
 

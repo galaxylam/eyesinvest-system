@@ -239,5 +239,9 @@ pnpm dev
 - The HKEX Data Marketplace DSSD subscription feed (clean historical
   archive, paid).
 - Real-time intraday HK short-sale data.
-- Short squeeze detector / squeeze scoring — analytical layer on top of
-  these tables, separate iteration.
+
+Short squeeze detector / squeeze scoring is now implemented as `sync-squeeze`
+— it reads `ey_short_interest` + the most-recent `ey_short_sale_1d` row and
+writes 6 nullable columns on `ey_stock_analytics` (`squeeze_score`, `_dtc`,
+`_si_chg_1w`, `_drawdown_30d`, `_volume_spike`, `_am_ratio`). See
+[`docs/SQUEEZE.md`](../../docs/SQUEEZE.md) for the formula + regime bands.

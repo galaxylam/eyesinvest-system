@@ -236,3 +236,51 @@ def fetch_last_settlement_date(client: Client, market: str) -> str | None:
     )
     rows = resp.data or []
     return rows[0]["settlement_date"] if rows else None
+
+
+def fetch_latest_short_interest(
+    client: Client, stock_id: str, *, limit: int = 2,
+) -> list[dict[str, Any]]:
+    """Desc-sorted latest N ``ey_short_interest`` rows for a stock.
+
+    Returns raw dicts (not ``ShortInterestRow``) because the squeeze
+    pipeline only needs three columns: ``short_interest``,
+    ``prior_short_interest``, ``change_pct``. Empty list on failure.
+    """
+    try:
+        resp = (
+            client.table("ey_short_interest")
+            .select("settlement_date, short_interest, prior_short_interest, change_pct")
+            .eq("stock_id", stock_id)
+            .order("settlement_date", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return list(resp.data or [])
+    except Exception as exc:  # noqa: BLE001 — supabase raises broad exceptions
+        logger.warning(f"fetch_latest_short_interest({stock_id}): {exc}")
+        return []
+
+
+def fetch_latest_short_sale(client: Client, stock_id: str) -> dict[str, Any] | None:
+    """Return the most-recent ``ey_short_sale_1d`` row for a stock, or None.
+
+    Only the columns the squeeze pipeline needs: ``am_short_volume`` (HK-
+    only signal) and ``short_volume`` (the full-day denominator for the
+    AM-ratio). None when no row exists or the query fails — both branches
+    produce ``am_ratio = null`` downstream, which is the right default.
+    """
+    try:
+        resp = (
+            client.table("ey_short_sale_1d")
+            .select("trade_date, short_volume, am_short_volume")
+            .eq("stock_id", stock_id)
+            .order("trade_date", desc=True)
+            .limit(1)
+            .execute()
+        )
+        rows = resp.data or []
+        return rows[0] if rows else None
+    except Exception as exc:  # noqa: BLE001 — supabase raises broad exceptions
+        logger.warning(f"fetch_latest_short_sale({stock_id}): {exc}")
+        return None

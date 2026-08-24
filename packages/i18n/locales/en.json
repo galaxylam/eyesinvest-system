@@ -182,7 +182,11 @@
       "siInc3": "Increasing 3 periods",
       "siDec1": "Decreasing 1 period",
       "siDec2": "Decreasing 2 periods",
-      "siDec3": "Decreasing 3 periods"
+      "siDec3": "Decreasing 3 periods",
+      "squeezeScore": "Squeeze",
+      "sq40": "≥ 40 (Normal+)",
+      "sq60": "≥ 60 (Elevated+)",
+      "sq80": "≥ 80 (High only)"
     },
     "col": {
       "symbol": "Symbol",
@@ -195,7 +199,8 @@
       "yield": "Yield",
       "return1m": "1M",
       "efficiency": "Eff",
-      "crowded": "Crowd"
+      "crowded": "Crowd",
+      "squeeze": "Squeeze"
     }
   },
   "stock": {
@@ -293,6 +298,26 @@
         "amHkd": "AM short HKD",
         "amRatio": "AM = {pct} of day"
       }
+    },
+    "squeezePanel": {
+      "title": "Short squeeze",
+      "subtitle": "Score as of {date}",
+      "regimeHigh": "High",
+      "regimeElevated": "Elevated",
+      "regimeNormal": "Normal",
+      "regimeLow": "Low",
+      "regimeUnknown": "Unknown",
+      "dtc": "Days to cover",
+      "dtcHint": "SI ÷ 30D avg vol",
+      "siChg1w": "SI Δ 1W",
+      "siChg1wHint": "Shorts piling in",
+      "drawdown": "30D drawdown",
+      "drawdownHint": "From 30D peak",
+      "volSpike": "Vol spike",
+      "volSpikeHint": "5D / 30D avg",
+      "amRatio": "AM / Day",
+      "amRatioHint": "Morning share of full-day",
+      "unavailable": "Squeeze score is not available for this symbol."
     },
     "chartRange": {
       "label": "Chart range",

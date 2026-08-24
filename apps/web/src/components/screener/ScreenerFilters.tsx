@@ -62,6 +62,8 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
     else params.delete('eff');
     if (next.crowdedRatioMin != null) params.set('crowd', String(next.crowdedRatioMin));
     else params.delete('crowd');
+    if (next.squeezeMin != null) params.set('sq', String(next.squeezeMin));
+    else params.delete('sq');
     const ma5 = encodeMaTrend(next.ma5Trend);
     if (ma5) params.set('ma5', ma5); else params.delete('ma5');
     const ma20 = encodeMaTrend(next.ma20Trend);
@@ -92,6 +94,7 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
     current.return1mMin != null ||
     current.volumeEfficiencyMin != null ||
     current.crowdedRatioMin != null ||
+    current.squeezeMin != null ||
     current.ma5Trend != null ||
     current.ma20Trend != null ||
     current.greenRed != null ||
@@ -202,6 +205,19 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
           { value: '1.2', label: t('filter.crowd1_2') },
           { value: '1.5', label: t('filter.crowd1_5') },
           { value: '2', label: t('filter.crowd2') },
+        ]}
+      />
+      <SelectField
+        label={t('filter.squeezeScore')}
+        value={current.squeezeMin == null ? '' : String(current.squeezeMin)}
+        onChange={(v) =>
+          apply({ ...current, squeezeMin: v === '' ? undefined : Number(v) })
+        }
+        options={[
+          { value: '', label: t('filter.any') },
+          { value: '40', label: t('filter.sq40') },
+          { value: '60', label: t('filter.sq60') },
+          { value: '80', label: t('filter.sq80') },
         ]}
       />
       <SelectField

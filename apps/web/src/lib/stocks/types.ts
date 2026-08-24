@@ -228,6 +228,41 @@ export interface ShortSelling {
 }
 
 // ============================================================================
+// Short Squeeze — composite analytical layer over the short-selling inputs.
+// Combines days-to-cover, short-interest Δ, drawdown, volume spike, and
+// (HK-only) AM-session share into a single 0..100 score. Populated by the
+// `sync-squeeze` worker command; surfaced as `SqueezeCard` on the stock
+// detail page and as a screener column + filter. See docs/SQUEEZE.md.
+// ============================================================================
+
+export type SqueezeRegime = 'high' | 'elevated' | 'normal' | 'low';
+
+/**
+ * Per-stock squeeze payload. `score` is null when every component is null
+ * — the worker never writes a synthetic zero. `regime` is derived from
+ * `score` in the worker (deterministic), so the UI doesn't re-bucket.
+ */
+export interface SqueezeScore {
+  symbol: string;
+  market: Market;
+  /** 0..100 composite. Null when insufficient data. */
+  score: number | null;
+  /** ≥70 high, ≥50 elevated, ≥30 normal, <30 low. Null when score is null. */
+  regime: SqueezeRegime | null;
+  /** Latest short_interest ÷ 30D avg volume (trading days). */
+  daysToCover: number | null;
+  /** Short-interest change vs prior settlement (signed %). */
+  siChangePct1w: number | null;
+  /** Latest max_drawdown_30d snapshot (negative fraction, e.g. -0.18). */
+  drawdown30d: number | null;
+  /** mean(volume[-5:]) ÷ mean(volume[-30:]). */
+  volumeSpike: number | null;
+  /** HK-only. AM short volume ÷ full-day short volume × 100. Null for US. */
+  amRatio: number | null;
+  asOfDate: string | null;
+}
+
+// ============================================================================
 // Sector detail page — slim per-stock row for `/[locale]/sectors/[sector]`.
 // Joins ey_stocks + ey_quote_snapshot + latest ey_stock_analytics row client-side
 // (no SQL view). Kept narrower than ScreenerRow to avoid pulling efficiency /
@@ -274,6 +309,9 @@ export interface ScreenerRow {
   greenRedVolumeRatio1m: number | null;
   /** Trend of the latest bi-weekly short_interest. 'up' = latest > previous, 'down' = latest < previous, 'flat' = equal, null = insufficient history (<2 settlements). */
   shortInterestTrend: 'up' | 'down' | 'flat' | null;
+  /** 0..100 composite short-squeeze score (see docs/SQUEEZE.md). Null when any
+   *  component is missing — never a synthetic zero. */
+  squeezeScore: number | null;
 }
 
 /** Direction + threshold for the 1M green-vs-red volume ratio filter. The
@@ -316,6 +354,10 @@ export interface ScreenerFilters {
   greenRed?: GreenRedFilter;
   /** Short-interest settlement trend over the last N consecutive periods. */
   shortInterestTrend?: ShortInterestTrendFilter;
+  /** Lower bound on the 0..100 short-squeeze score (e.g. 60 = ≥Elevated).
+   *  Rows with `squeezeScore == null` are excluded — there's no synthetic
+   *  zero to filter against. */
+  squeezeMin?: number;
 }
 
 export type ScreenerSortColumn =
@@ -325,7 +367,8 @@ export type ScreenerSortColumn =
   | 'dividendYield'
   | 'return1m'
   | 'changePercent'
-  | 'volume';
+  | 'volume'
+  | 'squeezeScore';
 
 export type ScreenerSortDir = 'asc' | 'desc';
 

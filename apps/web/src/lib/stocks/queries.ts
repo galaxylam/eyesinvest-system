@@ -25,6 +25,7 @@ import {
   getMockSectorDaily,
   getMockShortInterestBySymbol,
   getMockShortSelling,
+  getMockSqueeze,
   getMockStockDetail,
   getMockStocksBySector,
   getMockTopMoversWithChange,
@@ -50,6 +51,7 @@ import type {
   ShortInterestPoint,
   ShortSelling,
   ShortSellingPoint,
+  SqueezeScore,
   StockDetail,
   StockSearchResult,
   VolumeAggregates,
@@ -70,6 +72,7 @@ export type {
   ShortInterestPoint,
   ShortSelling,
   ShortSellingPoint,
+  SqueezeScore,
   VolumeAggregates,
   VolumeEfficiency,
   VolumeSeries,
@@ -1084,7 +1087,8 @@ export async function getScreenerRows(
         // dropdowns (see 0011_screener_filters.sql).
         supabase.from('ey_stock_analytics').select(
           'stock_id, as_of_date, return_1m, return_3m, return_6m, return_1y, ' +
-            'volume_efficiency, crowded_ratio, ma5_slope, ma20_slope, green_red_volume_ratio_1m',
+            'volume_efficiency, crowded_ratio, ma5_slope, ma20_slope, green_red_volume_ratio_1m, ' +
+            'squeeze_score',
         ).in('stock_id', ids).order('as_of_date', { ascending: false }),
         // Last 5 bi-weekly settlements per stock — enough for the
         // "increasing / decreasing for 1/2/3 periods" short-interest filter.
@@ -1111,12 +1115,14 @@ export async function getScreenerRows(
         return_1m: number | null; return_3m: number | null; return_6m: number | null; return_1y: number | null;
         volume_efficiency: number | null; crowded_ratio: number | null;
         ma5_slope: number | null; ma20_slope: number | null; green_red_volume_ratio_1m: number | null;
+        squeeze_score: number | null;
       }>();
       for (const a of ((analyticsRes.data ?? []) as unknown as Array<{
         stock_id: string; as_of_date: string;
         return_1m: number | null; return_3m: number | null; return_6m: number | null; return_1y: number | null;
         volume_efficiency: number | null; crowded_ratio: number | null;
         ma5_slope: number | null; ma20_slope: number | null; green_red_volume_ratio_1m: number | null;
+        squeeze_score: number | null;
       }>)) {
         if (analyticsMap.has(a.stock_id)) continue; // first wins; we ordered desc
         analyticsMap.set(a.stock_id, a);
@@ -1159,6 +1165,7 @@ export async function getScreenerRows(
           ma20Slope: a ? num(a.ma20_slope) : null,
           greenRedVolumeRatio1m: a ? num(a.green_red_volume_ratio_1m) : null,
           shortInterestTrend: computeShortInterestTrend(interest),
+          squeezeScore: a ? num(a.squeeze_score) : null,
         } satisfies ScreenerRow;
       });
 
@@ -1470,6 +1477,14 @@ function applyScreenerFilters(
     )) {
       return false;
     }
+    // Squeeze-score lower bound — nulls are excluded (no synthetic zero
+    // to filter against, same convention as `crowdedRatioMin`).
+    if (
+      f.squeezeMin != null &&
+      (r.squeezeScore == null || r.squeezeScore < f.squeezeMin)
+    ) {
+      return false;
+    }
     return true;
   });
 }
@@ -1652,5 +1667,80 @@ export async function getShortSelling(
       } satisfies ShortSelling;
     },
     () => getMockShortSelling(normalized),
+  );
+}
+
+// ============================================================================
+// Phase 5 — Short Squeeze (per-stock 0..100 composite score).
+// Reads the latest `ey_stock_analytics` row's 6 squeeze columns populated by
+// `sync-squeeze` (see docs/SQUEEZE.md). `score == null` means every
+// component was null at compute time — the UI renders an "unavailable"
+// state instead of a misleading 0. `regime` is derived from `score` here
+// (deterministic), so the worker doesn't have to store it.
+// ============================================================================
+
+export async function getSqueeze(
+  symbol: string,
+): Promise<QueryResult<SqueezeScore | null>> {
+  const normalized = symbol.toUpperCase();
+  return withFallback<SqueezeScore | null>(
+    async (supabase) => {
+      const stockRes = await supabase
+        .from('ey_stocks')
+        .select('id, market')
+        .eq('symbol', normalized)
+        .maybeSingle();
+      if (stockRes.error) throw stockRes.error;
+      if (!stockRes.data) return null;
+      const stockRow = stockRes.data;
+
+      const { data: analyticsRow, error: analyticsErr } = await supabase
+        .from('ey_stock_analytics')
+        .select(
+          'as_of_date, squeeze_score, squeeze_dtc, squeeze_si_chg_1w, ' +
+            'squeeze_drawdown_30d, squeeze_volume_spike, squeeze_am_ratio',
+        )
+        .eq('stock_id', stockRow.id)
+        .order('as_of_date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (analyticsErr) throw analyticsErr;
+      if (!analyticsRow) return null;
+      const r = analyticsRow as unknown as {
+        as_of_date: string | null;
+        squeeze_score: number | string | null;
+        squeeze_dtc: number | string | null;
+        squeeze_si_chg_1w: number | string | null;
+        squeeze_drawdown_30d: number | string | null;
+        squeeze_volume_spike: number | string | null;
+        squeeze_am_ratio: number | string | null;
+      };
+      const num = (v: unknown): number | null => (v == null ? null : Number(v));
+
+      const score = num(r.squeeze_score);
+      const regime = score == null
+        ? null
+        : score >= 70
+          ? 'high'
+          : score >= 50
+            ? 'elevated'
+            : score >= 30
+              ? 'normal'
+              : 'low';
+
+      return {
+        symbol: normalized,
+        market: stockRow.market as Market,
+        score,
+        regime,
+        daysToCover: num(r.squeeze_dtc),
+        siChangePct1w: num(r.squeeze_si_chg_1w),
+        drawdown30d: num(r.squeeze_drawdown_30d),
+        volumeSpike: num(r.squeeze_volume_spike),
+        amRatio: num(r.squeeze_am_ratio),
+        asOfDate: r.as_of_date ?? null,
+      } satisfies SqueezeScore;
+    },
+    () => getMockSqueeze(normalized),
   );
 }
