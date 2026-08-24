@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from supabase import Client, create_client
@@ -19,6 +20,30 @@ from eyesinvest_worker.models import (
     StockRecord,
     StockRecordWithSector,
 )
+
+
+def _sanitize_for_json(value: Any) -> Any:
+    """Recursively replace NaN / ±Inf floats with None.
+
+    Supabase uses stdlib `json.dumps` server-side, which rejects NaN
+    ("Out of range float values are not JSON compliant"). Several
+    providers (notably yfinance on newly-listed / delisted tickers or
+    rows with no trades) can hand us `float('nan')` for OHLC fields,
+    `previousClose`, etc. — if any of those reaches an upsert it
+    aborts the whole batch. This walks the dumped payload and
+    rewrites non-finite floats to None so the upsert proceeds
+    (the column lands as NULL, which is the right semantic).
+
+    Lists and dicts are walked recursively. Everything else is
+    returned unchanged.
+    """
+    if isinstance(value, float):
+        return None if not math.isfinite(value) else value
+    if isinstance(value, dict):
+        return {k: _sanitize_for_json(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_for_json(v) for v in value]
+    return value
 
 
 def make_client(url: str, key: str) -> Client:
@@ -65,7 +90,7 @@ def upsert_price_bars(client: Client, bars: list[PriceBar]) -> int:
     """Upsert in chunks of 500. Returns total rows written."""
     if not bars:
         return 0
-    payload = [b.model_dump(mode="json") for b in bars]
+    payload = [_sanitize_for_json(b.model_dump(mode="json")) for b in bars]
     written = 0
     for chunk in _chunks(payload, 500):
         resp = (
@@ -81,7 +106,7 @@ def upsert_price_bars(client: Client, bars: list[PriceBar]) -> int:
 def upsert_quote_snapshot(client: Client, quotes: list[QuoteSnapshot]) -> int:
     if not quotes:
         return 0
-    payload = [q.model_dump(mode="json") for q in quotes]
+    payload = [_sanitize_for_json(q.model_dump(mode="json")) for q in quotes]
     resp = (
         client.table("ey_quote_snapshot")
         .upsert(payload, on_conflict="stock_id")
@@ -106,7 +131,7 @@ def upsert_fundamentals(
         if stock is None:
             logger.warning(f"fundamentals: unknown symbol {symbol}")
             continue
-        payload = f.model_dump(mode="json")
+        payload = _sanitize_for_json(f.model_dump(mode="json"))
         try:
             (
                 client.table("ey_stocks")
@@ -137,7 +162,7 @@ def upsert_analytics_rows(client: Client, rows: list[StockAnalyticsRow]) -> int:
     """Upsert per-day indicator rows. PK conflict on (stock_id, as_of_date)."""
     if not rows:
         return 0
-    payload = [r.model_dump(mode="json") for r in rows]
+    payload = [_sanitize_for_json(r.model_dump(mode="json")) for r in rows]
     written = 0
     for chunk in _chunks(payload, 500):
         resp = (
@@ -154,7 +179,7 @@ def upsert_sector_daily(client: Client, rows: list[SectorDailyRow]) -> int:
     """Upsert sector-aggregate rows. PK conflict on (sector, as_of_date)."""
     if not rows:
         return 0
-    payload = [r.model_dump(mode="json") for r in rows]
+    payload = [_sanitize_for_json(r.model_dump(mode="json")) for r in rows]
     written = 0
     for chunk in _chunks(payload, 500):
         resp = (
@@ -173,7 +198,7 @@ def upsert_index_quotes(client: Client, quotes: list[IndexQuote]) -> int:
         return 0
     written = 0
     for q in quotes:
-        payload = q.model_dump(mode="json")
+        payload = _sanitize_for_json(q.model_dump(mode="json"))
         try:
             (
                 client.table("ey_index_quote")
@@ -191,7 +216,7 @@ def upsert_short_sales(client: Client, rows: list[ShortSaleRow]) -> int:
     """Upsert FINRA daily Reg-SHO rows. PK conflict on (stock_id, trade_date)."""
     if not rows:
         return 0
-    payload = [r.model_dump(mode="json") for r in rows]
+    payload = [_sanitize_for_json(r.model_dump(mode="json")) for r in rows]
     written = 0
     for chunk in _chunks(payload, 500):
         resp = (
@@ -208,7 +233,7 @@ def upsert_short_interest(client: Client, rows: list[ShortInterestRow]) -> int:
     """Upsert FINRA bi-weekly short-interest rows. PK conflict on (stock_id, settlement_date)."""
     if not rows:
         return 0
-    payload = [r.model_dump(mode="json") for r in rows]
+    payload = [_sanitize_for_json(r.model_dump(mode="json")) for r in rows]
     written = 0
     for chunk in _chunks(payload, 500):
         resp = (

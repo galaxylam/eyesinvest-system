@@ -124,6 +124,13 @@ def fetch_quote_snapshot(stock_id: str, symbol: str) -> QuoteSnapshot | None:
     else:
         prev_close = last_close
 
+    # Drop quotes that would carry a NaN price through to the DB — Supabase
+    # stdlib JSON rejects NaN, and a quote with a missing last_price is
+    # useless on the screener anyway.
+    if not (math.isfinite(last_close) and math.isfinite(prev_close)):
+        logger.warning(f"{symbol}: dropping quote with NaN close (last={last_close}, prev={prev_close})")
+        return None
+
     return QuoteSnapshot(
         stock_id=stock_id,
         last_price=last_close,
