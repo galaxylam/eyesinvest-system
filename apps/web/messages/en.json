@@ -233,6 +233,7 @@
     },
     "indicator": {
       "panelTitle": "Technical indicators",
+      "ma5": "MA(5)",
       "ma20": "MA(20)",
       "ma50": "MA(50)",
       "ma200": "MA(200)",
@@ -252,6 +253,7 @@
       "asOf": "as of {date}"
     },
     "chart": {
+      "ma5": "MA(5)",
       "ma20": "MA(20)",
       "ma50": "MA(50)",
       "ma200": "MA(200)"

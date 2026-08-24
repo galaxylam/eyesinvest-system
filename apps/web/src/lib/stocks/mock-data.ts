@@ -340,6 +340,7 @@ function computeIndicatorsAt(
     return +(slice.reduce((s, v) => s + v, 0) / window).toFixed(4);
   };
 
+  const ma5 = ma(5);
   const ma20 = ma(20);
   const ma50 = ma(50);
   const ma200 = ma(200);
@@ -462,6 +463,7 @@ function computeIndicatorsAt(
   return {
     stockId: `${symbol}-${symbol}`, // stable fake id when no Supabase
     asOfDate: dateStr,
+    ma5,
     ma20,
     ma50,
     ma200,

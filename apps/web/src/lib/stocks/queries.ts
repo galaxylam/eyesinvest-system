@@ -452,6 +452,11 @@ export async function getStockAnalytics(
       if (stockErr) throw stockErr;
       if (!stockRow) return [];
 
+      // ma5 is fetched separately below as a best-effort read so that the
+      // analytics query keeps working on databases where migration 0010
+      // (add_ma5.sql) hasn't been applied yet — PostgREST would otherwise
+      // reject the whole SELECT with 42703 and `withFallback` would drop us
+      // into mock data.
       const { data, error } = await supabase
         .from('ey_stock_analytics')
         .select(
@@ -463,6 +468,29 @@ export async function getStockAnalytics(
         .order('as_of_date', { ascending: false })
         .limit(days);
       if (error) throw error;
+
+      const ma5ByDate = new Map<string, number | null>();
+      const ma5Result = await supabase
+        .from('ey_stock_analytics')
+        .select('as_of_date, ma5')
+        .eq('stock_id', stockRow.id)
+        .order('as_of_date', { ascending: false })
+        .limit(days);
+      if (ma5Result.error) {
+        const msg = ma5Result.error.message ?? '';
+        if (ma5Result.error.code === '42703' && /ma5/.test(msg)) {
+          // Pre-migration-0010 state — leave ma5 null on every row.
+        } else {
+          throw ma5Result.error;
+        }
+      } else {
+        for (const r of ((ma5Result.data ?? []) as Array<{
+          as_of_date: string;
+          ma5: number | null;
+        }>)) {
+          ma5ByDate.set(r.as_of_date, r.ma5);
+        }
+      }
 
       const num = (v: unknown): number | null =>
         v == null ? null : Number(v);
@@ -491,6 +519,7 @@ export async function getStockAnalytics(
           ({
             stockId: stockRow.id,
             asOfDate: r.as_of_date,
+            ma5: num(ma5ByDate.get(r.as_of_date) ?? null),
             ma20: num(r.ma20),
             ma50: num(r.ma50),
             ma200: num(r.ma200),

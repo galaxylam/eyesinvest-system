@@ -168,6 +168,7 @@ def compute_analytics(
     else:
         volume_series = pd.Series(0, index=df.index, dtype="float64")
 
+    df["ma5"] = close.rolling(5).mean()
     df["ma20"] = close.rolling(20).mean()
     df["ma50"] = close.rolling(50).mean()
     df["ma200"] = close.rolling(200).mean()
@@ -208,6 +209,7 @@ def compute_analytics(
             StockAnalyticsRow(
                 stock_id=stock_id,
                 as_of_date=r["trade_date"],
+                ma5=_maybe_float(r.get("ma5")),
                 ma20=_maybe_float(r.get("ma20")),
                 ma50=_maybe_float(r.get("ma50")),
                 ma200=_maybe_float(r.get("ma200")),

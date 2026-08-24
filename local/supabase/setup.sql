@@ -476,6 +476,13 @@ alter table public.ey_stock_analytics
 alter table public.ey_sector_daily
   add column if not exists sector_return_1w  numeric(10,6),
   add column if not exists rs_vs_market_1w   numeric(10,6);
+
+-- ============================================================================
+-- Phase 3+ add MA5 to stock analytics — see 0010_add_ma5.sql
+-- ============================================================================
+
+alter table public.ey_stock_analytics
+  add column if not exists ma5 numeric(18,6);
 -- ============================================================================
 -- EyesInvest — Phase 1 seed data
 --

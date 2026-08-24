@@ -2,7 +2,7 @@
 
 import clsx from 'clsx';
 
-export type MaKey = 'ma20' | 'ma50' | 'ma200';
+export type MaKey = 'ma5' | 'ma20' | 'ma50' | 'ma200';
 
 interface ChartOverlayLegendProps {
   visible: Record<MaKey, boolean>;
@@ -11,12 +11,13 @@ interface ChartOverlayLegendProps {
 }
 
 const COLOR: Record<MaKey, string> = {
+  ma5: '#f472b6',   // pink-400 — fast line, lightest hue
   ma20: '#fbbf24',  // amber-400
   ma50: '#60a5fa',  // blue-400
   ma200: '#a78bfa', // violet-400
 };
 
-const ORDER: MaKey[] = ['ma20', 'ma50', 'ma200'];
+const ORDER: MaKey[] = ['ma5', 'ma20', 'ma50', 'ma200'];
 
 /**
  * Renders three pill buttons above the price chart. Clicking a pill toggles

@@ -58,6 +58,7 @@ export async function AnalyticsPanel({ currency, analytics }: AnalyticsPanelProp
         Technical
       </div>
       <dl className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4">
+        <Stat label={t('indicator.ma5')} value={fmtPrice(analytics?.ma5 ?? null)} />
         <Stat label={t('indicator.ma20')} value={fmtPrice(analytics?.ma20 ?? null)} />
         <Stat label={t('indicator.ma50')} value={fmtPrice(analytics?.ma50 ?? null)} />
         <Stat label={t('indicator.ma200')} value={fmtPrice(analytics?.ma200 ?? null)} />

@@ -8,6 +8,7 @@ export interface StockAnalytics {
   stockId: string;
   /** ISO date (YYYY-MM-DD) of the trading session. */
   asOfDate: string;
+  ma5: number | null;
   ma20: number | null;
   ma50: number | null;
   ma200: number | null;

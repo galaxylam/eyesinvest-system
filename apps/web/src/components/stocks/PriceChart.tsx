@@ -22,7 +22,7 @@ interface PriceChartProps {
    */
   series?: PriceBar[];
   /**
-   * Per-day MA20/MA50/MA200 time series from `getStockAnalytics()`. Each
+   * Per-day MA5/MA20/MA50/MA200 time series from `getStockAnalytics()`. Each
    * window has its own toggle in the legend above the chart. When omitted
    * (e.g. synthetic-only preview) no MA lines render.
    */
@@ -41,12 +41,14 @@ interface PriceChartProps {
 }
 
 const MA_COLORS: Record<MaKey, string> = {
+  ma5: '#f472b6',
   ma20: '#fbbf24',
   ma50: '#60a5fa',
   ma200: '#a78bfa',
 };
 
 const DEFAULT_VISIBLE: Record<MaKey, boolean> = {
+  ma5: false,
   ma20: true,
   ma50: true,
   ma200: false,
@@ -216,6 +218,7 @@ export function PriceChart({
   }, [visible, maSeries]);
 
   const labels: Record<MaKey, string> = {
+    ma5: t('chart.ma5'),
     ma20: t('chart.ma20'),
     ma50: t('chart.ma50'),
     ma200: t('chart.ma200'),

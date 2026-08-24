@@ -77,6 +77,7 @@ class StockAnalyticsRow(BaseModel):
 
     stock_id: str
     as_of_date: date
+    ma5: float | None = None
     ma20: float | None = None
     ma50: float | None = None
     ma200: float | None = None
