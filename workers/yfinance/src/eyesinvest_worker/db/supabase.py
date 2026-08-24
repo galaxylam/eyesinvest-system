@@ -12,10 +12,12 @@ from eyesinvest_worker.models import (
     IndexQuote,
     PriceBar,
     QuoteSnapshot,
+    SectorDailyRow,
     ShortInterestRow,
     ShortSaleRow,
     StockAnalyticsRow,
     StockRecord,
+    StockRecordWithSector,
 )
 
 
@@ -35,6 +37,24 @@ def fetch_active_stocks(client: Client) -> list[StockRecord]:
     )
     rows: list[dict[str, Any]] = resp.data or []
     return [StockRecord(**r) for r in rows]
+
+
+def fetch_active_stocks_with_sector(client: Client) -> list[StockRecordWithSector]:
+    """Read all `is_active = true` rows from `ey_stocks`, enriched with sector + shares.
+
+    Used by `sync-sector-strength` to build the sector rollup. `sector` may be
+    NULL for any stocks that predate the seed refresh; the caller skips them.
+    """
+    resp = (
+        client.table("ey_stocks")
+        .select("id, symbol, market, currency, sector, shares_outstanding")
+        .eq("is_active", True)
+        .order("market")
+        .order("symbol")
+        .execute()
+    )
+    rows: list[dict[str, Any]] = resp.data or []
+    return [StockRecordWithSector(**r) for r in rows]
 
 
 def _chunks(xs: list[Any], size: int) -> list[list[Any]]:
@@ -127,6 +147,23 @@ def upsert_analytics_rows(client: Client, rows: list[StockAnalyticsRow]) -> int:
         )
         written += len(resp.data or chunk)
     logger.info(f"upserted {written} rows into ey_stock_analytics")
+    return written
+
+
+def upsert_sector_daily(client: Client, rows: list[SectorDailyRow]) -> int:
+    """Upsert sector-aggregate rows. PK conflict on (sector, as_of_date)."""
+    if not rows:
+        return 0
+    payload = [r.model_dump(mode="json") for r in rows]
+    written = 0
+    for chunk in _chunks(payload, 500):
+        resp = (
+            client.table("ey_sector_daily")
+            .upsert(chunk, on_conflict="sector,as_of_date")
+            .execute()
+        )
+        written += len(resp.data or chunk)
+    logger.info(f"upserted {written} rows into ey_sector_daily")
     return written
 
 

@@ -5,6 +5,7 @@ import type {
   PriceBar,
   PriceSeries,
   Quote,
+  SectorDailyRow,
   StockAnalytics,
   StockFundamentals,
 } from '@eyesinvest/types';
@@ -16,6 +17,7 @@ import type {
   EfficiencyPoint,
   RelativeStrength,
   ScreenerRow,
+  SectorMember,
   ShortInterestPoint,
   ShortSelling,
   ShortSellingPoint,
@@ -309,12 +311,14 @@ export function getMockAnalytics(
 ): StockAnalytics[] {
   const series = getMockPriceSeries(symbol, 252);
   if (!series) return [];
+  const fundamentals = getMockFundamentals(symbol);
+  const shares = fundamentals?.sharesOutstanding ?? null;
   const closes = series.bars.map((b) => b.close);
   const out: StockAnalytics[] = [];
   const n = closes.length;
   for (let i = Math.max(0, n - days); i < n; i++) {
     out.push(
-      computeIndicatorsAt(series.bars, i, symbol),
+      computeIndicatorsAt(series.bars, i, symbol, shares),
     );
   }
   return out;
@@ -324,6 +328,7 @@ function computeIndicatorsAt(
   bars: PriceBar[],
   idx: number,
   symbol: string,
+  sharesOutstanding: number | null,
 ): StockAnalytics {
   const closes = bars.slice(0, idx + 1).map((b) => b.close);
   const last = closes[idx] ?? 0;
@@ -415,10 +420,44 @@ function computeIndicatorsAt(
     const past = closes[closes.length - 1 - days] ?? last;
     return +(((last - past) / past) * 100).toFixed(2);
   };
+  const return1w = ret(5);
   const return1m = ret(21);
   const return3m = ret(63);
   const return6m = ret(126);
   const return1y = ret(252);
+
+  // Phase 3+ sector-strength columns — computed from the same synthetic bars
+  // so values stay consistent with the existing chart and screener mocks.
+  // `relativeStrength` stays null: the mock universe has no historical SPX/HSI
+  // trailing-return series, and returning a synthetic delta would mislead
+  // anyone reading the dashboard. Sector-level `rsVsMarket*` are populated
+  // directly in `getMockSectorDaily`.
+  const bar = bars[idx];
+  const prev = idx > 0 ? bars[idx - 1] : null;
+  const dailyChangePct =
+    bar != null && prev != null && prev.close !== 0
+      ? ((bar.close - prev.close) / prev.close) * 100
+      : null;
+  const turnoverPct =
+    bar != null && sharesOutstanding != null && sharesOutstanding > 0
+      ? (bar.volume / sharesOutstanding) * 100
+      : null;
+  const volumeEfficiency =
+    dailyChangePct != null && turnoverPct != null && turnoverPct > 0
+      ? Math.abs(dailyChangePct) / turnoverPct
+      : null;
+
+  let crowdedRatio: number | null = null;
+  if (idx >= 29) {
+    // Need 30 bars for MA30 (window 30 inclusive of `idx`).
+    const slice5 = bars.slice(idx - 4, idx + 1);
+    const slice30 = bars.slice(idx - 29, idx + 1);
+    const ma5 = slice5.reduce((s, b) => s + b.volume, 0) / slice5.length;
+    const ma30 = slice30.reduce((s, b) => s + b.volume, 0) / slice30.length;
+    if (ma30 > 0) {
+      crowdedRatio = +(ma5 / ma30).toFixed(4);
+    }
+  }
 
   return {
     stockId: `${symbol}-${symbol}`, // stable fake id when no Supabase
@@ -432,11 +471,73 @@ function computeIndicatorsAt(
     macdHist,
     volatility30d,
     maxDrawdown30d,
+    return1w,
     return1m,
     return3m,
     return6m,
     return1y,
+    volumeEfficiency: volumeEfficiency != null ? +volumeEfficiency.toFixed(4) : null,
+    crowdedRatio,
+    relativeStrength: null,
   };
+}
+
+/**
+ * Mock sector-strength rows — one row per sector keyed by the English
+ * sector name in `ey_stocks.sector`. Same shape as the persisted `ey_sector_daily`
+ * table; values are deterministic so the dashboard tile is stable across
+ * renders when Supabase is offline.
+ *
+ * The mock universe spans 7 sectors — mirrors the seeded `ey_stocks` set
+ * in `local/supabase/seed.sql`. Filtering by `sector` and `limit` matches
+ * the production query shape.
+ */
+export function getMockSectorDaily(
+  sector: string | null,
+  limit: number,
+): SectorDailyRow[] {
+  const today = new Date().toISOString().slice(0, 10);
+  const all: SectorDailyRow[] = [
+    { sector: 'Financial Services',     asOfDate: today, memberCount: 6, breadthPct: 67, sectorReturn1w:  1.2, sectorReturn1m:  4.2, sectorReturn3m:  8.1, sectorReturn6m: 12.3, sectorReturn1y: 22.4, rsVsMarket1w:  0.4, rsVsMarket1m:  1.8, rsVsMarket3m:  3.2, rsVsMarket6m:  4.7, rsVsMarket1y:  8.9, volumeEfficiencyMean: 0.42, crowdedRatioMean: 0.95 },
+    { sector: 'Communication Services', asOfDate: today, memberCount: 5, breadthPct: 80, sectorReturn1w:  1.8, sectorReturn1m:  6.1, sectorReturn3m: 11.5, sectorReturn6m: 18.2, sectorReturn1y: 31.7, rsVsMarket1w:  1.0, rsVsMarket1m:  3.7, rsVsMarket3m:  6.6, rsVsMarket6m: 10.6, rsVsMarket1y: 18.2, volumeEfficiencyMean: 0.58, crowdedRatioMean: 1.12 },
+    { sector: 'Technology',             asOfDate: today, memberCount: 4, breadthPct: 75, sectorReturn1w:  2.4, sectorReturn1m:  8.4, sectorReturn3m: 14.7, sectorReturn6m: 22.1, sectorReturn1y: 38.2, rsVsMarket1w:  1.6, rsVsMarket1m:  6.0, rsVsMarket3m:  9.8, rsVsMarket6m: 14.5, rsVsMarket1y: 24.7, volumeEfficiencyMean: 0.71, crowdedRatioMean: 1.21 },
+    { sector: 'Consumer Cyclical',      asOfDate: today, memberCount: 3, breadthPct: 67, sectorReturn1w:  0.9, sectorReturn1m:  2.8, sectorReturn3m:  5.3, sectorReturn6m:  9.7, sectorReturn1y: 17.5, rsVsMarket1w:  0.1, rsVsMarket1m:  0.4, rsVsMarket3m:  0.4, rsVsMarket6m:  2.1, rsVsMarket1y:  4.0, volumeEfficiencyMean: 0.39, crowdedRatioMean: 0.88 },
+    { sector: 'Energy',                 asOfDate: today, memberCount: 3, breadthPct: 33, sectorReturn1w: -0.6, sectorReturn1m: -2.1, sectorReturn3m:  1.4, sectorReturn6m:  4.8, sectorReturn1y:  6.3, rsVsMarket1w: -1.4, rsVsMarket1m: -4.5, rsVsMarket3m: -3.5, rsVsMarket6m: -2.8, rsVsMarket1y: -7.2, volumeEfficiencyMean: 0.28, crowdedRatioMean: 0.74 },
+    { sector: 'Consumer Defensive',     asOfDate: today, memberCount: 3, breadthPct: 67, sectorReturn1w:  0.3, sectorReturn1m:  1.2, sectorReturn3m:  2.8, sectorReturn6m:  5.1, sectorReturn1y:  9.8, rsVsMarket1w: -0.5, rsVsMarket1m: -1.2, rsVsMarket3m: -2.1, rsVsMarket6m: -2.5, rsVsMarket1y: -3.7, volumeEfficiencyMean: 0.18, crowdedRatioMean: 0.62 },
+    { sector: 'Healthcare',             asOfDate: today, memberCount: 2, breadthPct: 50, sectorReturn1w:  1.5, sectorReturn1m: -0.4, sectorReturn3m:  1.7, sectorReturn6m:  3.6, sectorReturn1y:  8.1, rsVsMarket1w:  0.7, rsVsMarket1m: -2.8, rsVsMarket3m: -3.2, rsVsMarket6m: -4.0, rsVsMarket1y: -5.6, volumeEfficiencyMean: 0.22, crowdedRatioMean: 0.81 },
+  ];
+  const filtered = sector ? all.filter((r) => r.sector === sector) : all;
+  return filtered.slice(0, limit);
+}
+
+/**
+ * Mock sector-member list — every mock stock whose `sector` matches, joined
+ * client-side with its mock quote (last + change) and mock analytics (1m
+ * return). Mirrors the production join of `ey_stocks` + `ey_quote_snapshot`
+ * + latest `ey_stock_analytics` row that the sector-detail page renders.
+ *
+ * Sorted by `return1m` desc so the leader is on top — matches the dashboard
+ * leaderboard ordering pattern. Unknown sector returns `[]`.
+ */
+export function getMockStocksBySector(sector: string): SectorMember[] {
+  const members = STOCKS.filter((s) => s.sector === sector);
+  const rows: SectorMember[] = members.map((s) => {
+    const quote = getMockQuote(s.symbol);
+    const analytics = getMockAnalytics(s.symbol, 1);
+    const latest = analytics[analytics.length - 1] ?? null;
+    return {
+      symbol: s.symbol,
+      name: s.name,
+      market: s.market,
+      currency: s.currency,
+      sector: s.sector,
+      lastPrice: quote?.lastPrice ?? null,
+      changePercent: quote?.changePercent ?? null,
+      return1m: latest?.return1m ?? null,
+    } satisfies SectorMember;
+  });
+  rows.sort((a, b) => (b.return1m ?? -Infinity) - (a.return1m ?? -Infinity));
+  return rows;
 }
 
 /**

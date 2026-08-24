@@ -19,6 +19,7 @@ from eyesinvest_worker.db import (
     upsert_index_quotes,
     upsert_price_bars,
     upsert_quote_snapshot,
+    upsert_sector_daily,
     upsert_short_interest,
     upsert_short_sales,
 )
@@ -26,6 +27,7 @@ from eyesinvest_worker.log import configure_logging, logger
 from eyesinvest_worker.models import Fundamentals, IndexQuote
 from eyesinvest_worker.providers import (
     compute_analytics,
+    compute_sector_strength,
     fetch_daily_history,
     fetch_fundamentals,
     fetch_index_quote,
@@ -285,9 +287,37 @@ def sync_shorts() -> None:
     )
 
 
+@main.command("sync-sector-strength")
+def sync_sector_strength() -> None:
+    """Compute per-stock sector metrics + sector-level rollup.
+
+    Pass A: per-stock analytics update — writes volume_efficiency,
+    crowded_ratio, relative_strength onto ey_stock_analytics (same PK as
+    sync-analytics so reruns overwrite cleanly).
+
+    Pass B: sector aggregation — groups today's per-stock rows by sector
+    and writes member_count / breadth_pct / sector_return_N /
+    rs_vs_market_N / mean efficiency / mean crowded onto ey_sector_daily.
+
+    Market benchmark (SPX/HSI trailing returns) is refetched in-memory via
+    yfinance. Per-stock failures or yfinance failures log a warning and
+    leave affected columns null rather than aborting the run.
+    """
+    cfg = _load_config()
+    configure_logging(cfg.log_level)
+    client = make_client(cfg.supabase_url, cfg.supabase_service_role_key)
+
+    result = compute_sector_strength(client, cfg)
+    n_stock = upsert_analytics_rows(client, result.analytics_rows) if result.analytics_rows else 0
+    n_sector = upsert_sector_daily(client, result.sector_rows) if result.sector_rows else 0
+    logger.info(
+        f"sync-sector-strength done — {n_stock} stock rows, {n_sector} sector rows"
+    )
+
+
 @main.command("all")
 def sync_all() -> None:
-    """Run every sync command in sequence: prices → quotes → fundamentals → analytics → indexes → shorts."""
+    """Run every sync command in sequence: prices → quotes → fundamentals → analytics → indexes → shorts → sector-strength."""
     for cmd in (
         "sync-prices",
         "sync-quotes",
@@ -295,6 +325,7 @@ def sync_all() -> None:
         "sync-analytics",
         "sync-indexes",
         "sync-shorts",
+        "sync-sector-strength",
     ):
         logger.info(f"=== {cmd} ===")
         # Re-invoke this CLI as a subprocess so config + logging re-init cleanly.

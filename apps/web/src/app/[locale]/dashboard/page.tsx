@@ -6,6 +6,7 @@ import { getIndexQuotes, getTopMoversWithChange } from '@/lib/stocks/queries';
 import { SignedNumber } from '@/components/stocks/SignedNumber';
 import { formatSignedPercent } from '@/lib/format/quote';
 import { DashboardWatchlistCard } from '@/components/watchlist/DashboardWatchlistCard';
+import { SectorStrengthCard } from '@/components/dashboard/SectorStrengthCard';
 
 interface DashboardProps {
   params: Promise<{ locale: string }>;
@@ -37,10 +38,11 @@ export default async function DashboardPage({ params }: DashboardProps) {
         </Suspense>
       </div>
 
-      <section className="mt-8 rounded-lg border border-border bg-bg-elevated p-6">
-        <h2 className="text-sm font-semibold text-fg">{t('phaseNoteTitle')}</h2>
-        <p className="mt-1 text-sm text-fg-muted">{t('phaseNoteBody')}</p>
-      </section>
+      <div className="mt-4">
+        <Suspense fallback={<CardSkeleton title={t('sectorStrength.title')} />}>
+          <SectorStrengthCard />
+        </Suspense>
+      </div>
     </div>
   );
 }

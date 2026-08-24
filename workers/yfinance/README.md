@@ -36,6 +36,7 @@ uv run python -m eyesinvest_worker sync-fundamentals
 uv run python -m eyesinvest_worker sync-analytics
 uv run python -m eyesinvest_worker sync-indexes
 uv run python -m eyesinvest_worker sync-shorts   # see SYNC_SHORTS.md
+uv run python -m eyesinvest_worker sync-sector-strength
 ```
 
 Convenience from repo root: `pnpm worker:sync` (= `cd workers/yfinance && uv run python -m eyesinvest_worker all`).
@@ -50,6 +51,7 @@ Convenience from repo root: `pnpm worker:sync` (= `cd workers/yfinance && uv run
 | `sync-analytics` | `ey_stock_analytics` | MA / RSI / MACD / volatility / drawdown / returns |
 | `sync-indexes` | `ey_index_quote` | Latest SPX + HSI daily quotes |
 | `sync-shorts` | `ey_short_sale_1d`, `ey_short_interest` | US-only FINRA short-selling (see `SYNC_SHORTS.md`) |
+| `sync-sector-strength` | `ey_stock_analytics`, `ey_sector_daily` | Phase 3+ — per-stock `volume_efficiency` / `crowded_ratio` / `relative_strength` + sector-level rollup. Refetches SPX + HSI trailing bars from yfinance (~2 calls) to compute market-relative returns. |
 | `all` | all of the above | Sequential |
 
 ## Scheduling

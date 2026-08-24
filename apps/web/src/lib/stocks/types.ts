@@ -208,6 +208,24 @@ export interface ShortSelling {
   };
 }
 
+// ============================================================================
+// Sector detail page — slim per-stock row for `/[locale]/sectors/[sector]`.
+// Joins ey_stocks + ey_quote_snapshot + latest ey_stock_analytics row client-side
+// (no SQL view). Kept narrower than ScreenerRow to avoid pulling efficiency /
+// crowded / fundamentals into a list page that doesn't use them.
+// ============================================================================
+
+export interface SectorMember {
+  symbol: string;
+  name: string;
+  market: Market;
+  currency: string;
+  sector: string | null;
+  lastPrice: number | null;
+  changePercent: number | null;
+  return1m: number | null;
+}
+
 export interface ScreenerRow {
   symbol: string;
   name: string;

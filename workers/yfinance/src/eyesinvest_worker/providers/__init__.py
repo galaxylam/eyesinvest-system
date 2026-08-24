@@ -3,7 +3,9 @@ doesn't import it directly."""
 
 from eyesinvest_worker.providers.analytics import compute_analytics
 from eyesinvest_worker.providers.hkex_daily import sync_hkex_short_sales
+from eyesinvest_worker.providers.index_history import fetch_index_trailing_returns
 from eyesinvest_worker.providers.indexes import fetch_index_quote
+from eyesinvest_worker.providers.sector_strength import compute_sector_strength
 from eyesinvest_worker.providers.sfc_weekly import sync_sfc_short_interest
 from eyesinvest_worker.providers.shorts import (
     fetch_finra_short_interest,
@@ -19,11 +21,13 @@ from eyesinvest_worker.providers.yfinance import (
 
 __all__ = [
     "compute_analytics",
+    "compute_sector_strength",
     "fetch_daily_history",
     "fetch_finra_short_interest",
     "fetch_finra_short_sale",
     "fetch_fundamentals",
     "fetch_index_quote",
+    "fetch_index_trailing_returns",
     "fetch_quote_snapshot",
     "sync_hkex_short_sales",
     "sync_sfc_short_interest",

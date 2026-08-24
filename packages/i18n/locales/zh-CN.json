@@ -66,8 +66,49 @@
     "hkIndex": "港股 — 恒生指数",
     "usAdv": "美股上涨家数",
     "hkAdv": "港股上涨家数",
-    "phaseNoteTitle": "提示",
-    "phaseNoteBody": "每日行情由 yfinance 引擎提供。技术指标、相对强弱与 AI 分析将于后续阶段加入。"
+    "sectorStrength": {
+      "title": "行业强度",
+      "subtitle": "近一个月行业领先榜",
+      "colSector": "行业",
+      "col1wReturn": "1 周回报",
+      "col1mReturn": "1 个月回报",
+      "col1wRsVsMarket": "1 周相对大盘",
+      "col1mRsVsMarket": "1 个月相对大盘",
+      "colBreadth": "宽度",
+      "source": "来源：Supabase (ey_sector_daily)",
+      "empty": "尚无行业数据。请执行 sync-sector-strength 同步数据。",
+      "sectors": {
+        "financialServices":     "金融服务",
+        "communicationServices": "通信服务",
+        "technology":            "科技",
+        "consumerCyclical":      "非必需消费",
+        "energy":                "能源",
+        "consumerDefensive":     "必需消费",
+        "healthcare":            "医疗保健"
+      }
+    },
+    "sectorDetail": {
+      "subtitle": "{count, plural, other {# 只成份股}}",
+      "empty": "此行业没有成份股。",
+      "backToDashboard": "返回仪表板",
+      "colSymbol": "代码",
+      "colPrice": "股价",
+      "colChange": "变化",
+      "col1wReturn": "1 周回报",
+      "col1mReturn": "1 个月回报",
+      "col1wRsVsMarket": "1 周相对大盘",
+      "col1mRsVsMarket": "1 个月相对大盘",
+      "colBreadth": "宽度",
+      "sectors": {
+        "financialServices":     "金融服务",
+        "communicationServices": "通信服务",
+        "technology":            "科技",
+        "consumerCyclical":      "非必需消费",
+        "energy":                "能源",
+        "consumerDefensive":     "必需消费",
+        "healthcare":            "医疗保健"
+      }
+    }
   },
   "watchlist": {
     "title": "自选股",

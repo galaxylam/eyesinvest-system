@@ -70,3 +70,12 @@ class WorkerConfig(BaseSettings):
     shorts_force_sfc_backfill: bool = Field(
         default=False, alias="SHORTS_FORCE_SFC_BACKFILL"
     )
+
+    # Phase 3+ sector-strength: how many calendar days of price history to
+    # keep per stock when computing volume_efficiency / crowded_ratio /
+    # trailing returns. 252 ≈ 1y trading days, which is the longest
+    # window used by the sector rollup. Older bars are trimmed before the
+    # analytics pass so we don't churn over 3y of data unnecessarily.
+    sector_strength_lookback_days: int = Field(
+        default=252, alias="SECTOR_STRENGTH_LOOKBACK_DAYS"
+    )

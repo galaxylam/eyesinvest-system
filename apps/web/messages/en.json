@@ -66,8 +66,49 @@
     "hkIndex": "HK — Hang Seng",
     "usAdv": "US advancers",
     "hkAdv": "HK advancers",
-    "phaseNoteTitle": "Heads up",
-    "phaseNoteBody": "Live daily prices via the yfinance worker. Technical indicators, relative-strength, and AI mapping arrive in later phases."
+    "sectorStrength": {
+      "title": "Sector strength",
+      "subtitle": "Trailing 1-month leaderboard",
+      "colSector": "Sector",
+      "col1wReturn": "1W return",
+      "col1mReturn": "1M return",
+      "col1wRsVsMarket": "1W RS vs market",
+      "col1mRsVsMarket": "1M RS vs market",
+      "colBreadth": "Breadth",
+      "source": "Source: Supabase (ey_sector_daily)",
+      "empty": "No sector data yet. Run sync-sector-strength to populate.",
+      "sectors": {
+        "financialServices":     "Financial Services",
+        "communicationServices": "Communication Services",
+        "technology":            "Technology",
+        "consumerCyclical":      "Consumer Cyclical",
+        "energy":                "Energy",
+        "consumerDefensive":     "Consumer Defensive",
+        "healthcare":            "Healthcare"
+      }
+    },
+    "sectorDetail": {
+      "subtitle": "{count, plural, =1 {1 constituent} other {# constituents}}",
+      "empty": "No constituents in this sector.",
+      "backToDashboard": "Back to dashboard",
+      "colSymbol": "Symbol",
+      "colPrice": "Price",
+      "colChange": "Change",
+      "col1wReturn": "1W return",
+      "col1mReturn": "1M return",
+      "col1wRsVsMarket": "1W RS vs market",
+      "col1mRsVsMarket": "1M RS vs market",
+      "colBreadth": "Breadth",
+      "sectors": {
+        "financialServices":     "Financial Services",
+        "communicationServices": "Communication Services",
+        "technology":            "Technology",
+        "consumerCyclical":      "Consumer Cyclical",
+        "energy":                "Energy",
+        "consumerDefensive":     "Consumer Defensive",
+        "healthcare":            "Healthcare"
+      }
+    }
   },
   "watchlist": {
     "title": "Watchlist",

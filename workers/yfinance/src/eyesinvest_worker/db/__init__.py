@@ -2,6 +2,7 @@
 
 from eyesinvest_worker.db.supabase import (
     fetch_active_stocks,
+    fetch_active_stocks_with_sector,
     fetch_last_settlement_date,
     fetch_price_history,
     make_client,
@@ -10,12 +11,14 @@ from eyesinvest_worker.db.supabase import (
     upsert_index_quotes,
     upsert_price_bars,
     upsert_quote_snapshot,
+    upsert_sector_daily,
     upsert_short_interest,
     upsert_short_sales,
 )
 
 __all__ = [
     "fetch_active_stocks",
+    "fetch_active_stocks_with_sector",
     "fetch_last_settlement_date",
     "fetch_price_history",
     "make_client",
@@ -24,6 +27,7 @@ __all__ = [
     "upsert_index_quotes",
     "upsert_price_bars",
     "upsert_quote_snapshot",
+    "upsert_sector_daily",
     "upsert_short_interest",
     "upsert_short_sales",
 ]

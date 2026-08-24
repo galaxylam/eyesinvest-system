@@ -24,4 +24,40 @@ export interface StockAnalytics {
   return3m: number | null;
   return6m: number | null;
   return1y: number | null;
+  return1w: number | null;
+  /** |change%| / (volume / sharesOutstanding × 100) for the latest day. Null when shares float is unknown. */
+  volumeEfficiency: number | null;
+  /** MA5(volume) / MA30(volume) for the latest day. Null until both windows have enough history. */
+  crowdedRatio: number | null;
+  /** Trailing 1m return minus the stock's market benchmark (SPX for US, HSI for HK). Percent points. Populated only on the most-recent row. */
+  relativeStrength: number | null;
+}
+
+/**
+ * Sector-level rollup written by `sync-sector-strength`. One row per
+ * `(sector, as_of_date)` — produced by the worker, surfaced on the
+ * dashboard leaderboard tile and (eventually) the screener "by-sector" view.
+ */
+export interface SectorDailyRow {
+  sector: string;
+  asOfDate: string;
+  memberCount: number;
+  /** % of constituents with positive return_1m. 0..100. */
+  breadthPct: number | null;
+  /** Equal-weight mean of constituents' trailing returns, in percent. */
+  sectorReturn1w: number | null;
+  sectorReturn1m: number | null;
+  sectorReturn3m: number | null;
+  sectorReturn6m: number | null;
+  sectorReturn1y: number | null;
+  /** `sector_return_N − global_market_return_N` where global = mean(SPX, HSI). Percent points. */
+  rsVsMarket1w: number | null;
+  rsVsMarket1m: number | null;
+  rsVsMarket3m: number | null;
+  rsVsMarket6m: number | null;
+  rsVsMarket1y: number | null;
+  /** Mean of constituents' latest volume_efficiency. Null when shares float is unknown. */
+  volumeEfficiencyMean: number | null;
+  /** Mean of constituents' latest crowded_ratio (MA5÷MA30). */
+  crowdedRatioMean: number | null;
 }

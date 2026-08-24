@@ -6,6 +6,7 @@ import type {
   Market,
   PriceSeries,
   Quote,
+  SectorDailyRow,
   StockAnalytics,
   StockFundamentals,
 } from '@eyesinvest/types';
@@ -21,8 +22,10 @@ import {
   getMockQuote,
   getMockRelativeStrength,
   getMockScreenerRows,
+  getMockSectorDaily,
   getMockShortSelling,
   getMockStockDetail,
+  getMockStocksBySector,
   getMockTopMoversWithChange,
   getMockVolumeEfficiency,
   getMockVolumeSeries,
@@ -40,6 +43,7 @@ import type {
   ScreenerRow,
   ScreenerSort,
   ScreenerSortColumn,
+  SectorMember,
   ShortInterestPoint,
   ShortSelling,
   ShortSellingPoint,
@@ -451,7 +455,9 @@ export async function getStockAnalytics(
       const { data, error } = await supabase
         .from('ey_stock_analytics')
         .select(
-          'as_of_date, ma20, ma50, ma200, rsi14, macd_line, macd_signal, macd_hist, volatility_30d, max_drawdown_30d, return_1m, return_3m, return_6m, return_1y',
+          'as_of_date, ma20, ma50, ma200, rsi14, macd_line, macd_signal, macd_hist, ' +
+            'volatility_30d, max_drawdown_30d, return_1m, return_3m, return_6m, return_1y, return_1w, ' +
+            'volume_efficiency, crowded_ratio, relative_strength',
         )
         .eq('stock_id', stockRow.id)
         .order('as_of_date', { ascending: false })
@@ -461,7 +467,7 @@ export async function getStockAnalytics(
       const num = (v: unknown): number | null =>
         v == null ? null : Number(v);
 
-      const rows = ((data ?? []) as Array<{
+      const rows = ((data ?? []) as unknown as Array<{
         as_of_date: string;
         ma20: number | null;
         ma50: number | null;
@@ -476,6 +482,10 @@ export async function getStockAnalytics(
         return_3m: number | null;
         return_6m: number | null;
         return_1y: number | null;
+        return_1w: number | null;
+        volume_efficiency: number | null;
+        crowded_ratio: number | null;
+        relative_strength: number | null;
       }>).map(
         (r) =>
           ({
@@ -494,6 +504,10 @@ export async function getStockAnalytics(
             return3m: num(r.return_3m),
             return6m: num(r.return_6m),
             return1y: num(r.return_1y),
+            return1w: num(r.return_1w),
+            volumeEfficiency: num(r.volume_efficiency),
+            crowdedRatio: num(r.crowded_ratio),
+            relativeStrength: num(r.relative_strength),
           }) satisfies StockAnalytics,
       );
 
@@ -767,6 +781,41 @@ export async function getVolumeEfficiency(
         : Number(stockRow.shares_outstanding);
       const hasFloatData = shares != null && shares > 0;
 
+      // Phase 3+ short-circuit: read the persisted `volume_efficiency`
+      // column populated by `sync-sector-strength`. When present, return
+      // a stub shape with `series: []` so the chart can render its
+      // empty-state branch — same shape as the existing per-request
+      // compute, just without the 30-day window. Falls back to the
+      // historical per-request computation when the column is null
+      // (worker hasn't run yet, or shares float is unknown).
+      const { data: analyticsRow, error: analyticsErr } = await supabase
+        .from('ey_stock_analytics')
+        .select('volume_efficiency, as_of_date')
+        .eq('stock_id', stockRow.id)
+        .order('as_of_date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (analyticsErr) throw analyticsErr;
+      if (analyticsRow?.volume_efficiency != null) {
+        const efficiencyToday = Number(analyticsRow.volume_efficiency);
+        return {
+          symbol: stockRow.symbol,
+          market: stockRow.market as Market,
+          efficiencyToday,
+          // `turnoverPctToday` and `avgTurnoverPct30d` are not stored in the
+          // persisted column — left null. The headline ratio is what the
+          // panel needs; the per-day breakdown lives in `series` which is
+          // empty for the persisted-column path (chart shows its no-data
+          // branch, same as the empty-bars case in the mock).
+          turnoverPctToday: null,
+          avgTurnoverPct30d: null,
+          sharesOutstanding: shares,
+          hasFloatData,
+          asOfDate: analyticsRow.as_of_date,
+          series: [],
+        } satisfies VolumeEfficiency;
+      }
+
       const { data, error } = await supabase
         .from('ey_price_1d')
         .select('trade_date, close, volume')
@@ -865,6 +914,48 @@ export async function getCrowdedRatio(
         .maybeSingle();
       if (stockErr) throw stockErr;
       if (!stockRow) return null;
+
+      // Phase 3+ short-circuit: read the persisted `crowded_ratio`
+      // column populated by `sync-sector-strength` (MA5÷MA30, same
+      // definition as the per-request compute below). When present,
+      // return the stub shape with `series: []` — preserves the panel
+      // headline and degrades the chart to its empty branch. Falls
+      // back to the historical computation when the column is null
+      // (worker hasn't run yet, or insufficient history).
+      const { data: analyticsRow, error: analyticsErr } = await supabase
+        .from('ey_stock_analytics')
+        .select('crowded_ratio, as_of_date')
+        .eq('stock_id', stockRow.id)
+        .order('as_of_date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (analyticsErr) throw analyticsErr;
+      if (analyticsRow?.crowded_ratio != null) {
+        const ratio = Number(analyticsRow.crowded_ratio);
+        const regime: CrowdedRegime | null =
+          ratio >= 1.5
+            ? 'crowded'
+            : ratio >= 1.2
+              ? 'elevated'
+              : ratio >= 0.8
+                ? 'normal'
+                : 'subdued';
+        return {
+          symbol: stockRow.symbol,
+          market: stockRow.market as Market,
+          ratio,
+          // MA5/MA30 themselves are not stored in the persisted column —
+          // the panel can still show the headline ratio and the empty
+          // chart. Re-running the per-request compute is the only way
+          // to recover those; we don't bother here because the chart's
+          // empty-state branch already covers it.
+          ma5: null,
+          ma30: null,
+          regime,
+          series: [],
+          asOfDate: analyticsRow.as_of_date,
+        } satisfies CrowdedRatio;
+      }
 
       const { data, error } = await supabase
         .from('ey_price_1d')
@@ -984,7 +1075,7 @@ export async function getScreenerRows(
     async (supabase) => {
       const { data: stocks, error: stocksErr } = await supabase
         .from('ey_stocks')
-        .select('id, symbol, name, market, currency, sector, shares_outstanding')
+        .select('id, symbol, name, market, currency, sector')
         .eq('is_active', true)
         .order('symbol', { ascending: true });
       if (stocksErr) throw stocksErr;
@@ -995,12 +1086,11 @@ export async function getScreenerRows(
         market: Market;
         currency: string;
         sector: string | null;
-        shares_outstanding: number | null;
       }>;
       if (stockRows.length === 0) return [];
 
       const ids = stockRows.map((s) => s.id);
-      const [quotesRes, fundRes, analyticsRes, priceRes] = await Promise.all([
+      const [quotesRes, fundRes, analyticsRes] = await Promise.all([
         supabase.from('ey_quote_snapshot').select(
           'stock_id, last_price, change, change_percent, volume',
         ).in('stock_id', ids),
@@ -1008,19 +1098,16 @@ export async function getScreenerRows(
           'stock_id, market_cap, pe_ratio, dividend_yield',
         ).in('stock_id', ids),
         // One row per (stock, as_of_date); take the latest by as_of_date desc.
+        // Phase 3+: `volume_efficiency` + `crowded_ratio` are persisted here by
+        // `sync-sector-strength` — replaces the previous per-stock
+        // `ey_price_1d` 30-day pull + `deriveEfficiencyAndCrowded` round trip.
         supabase.from('ey_stock_analytics').select(
-          'stock_id, as_of_date, return_1m, return_3m, return_6m, return_1y',
+          'stock_id, as_of_date, return_1m, return_3m, return_6m, return_1y, volume_efficiency, crowded_ratio',
         ).in('stock_id', ids).order('as_of_date', { ascending: false }),
-        // 30 days of daily bars per stock. Drives volumeEfficiencyToday
-        // (close pct change + turnoverPct) and crowdedRatio (MA5÷MA30).
-        supabase.from('ey_price_1d').select(
-          'stock_id, trade_date, close, volume',
-        ).in('stock_id', ids).order('trade_date', { ascending: false }).limit(ids.length * 30),
       ]);
       if (quotesRes.error) throw quotesRes.error;
       if (fundRes.error) throw fundRes.error;
       if (analyticsRes.error) throw analyticsRes.error;
-      if (priceRes.error) throw priceRes.error;
 
       const quoteMap = new Map<string, { last_price: number | null; change: number | null; change_percent: number | null; volume: number | null }>();
       for (const q of (quotesRes.data ?? []) as Array<{ stock_id: string; last_price: number | null; change: number | null; change_percent: number | null; volume: number | null }>) {
@@ -1031,21 +1118,10 @@ export async function getScreenerRows(
         fundMap.set(f.stock_id, f);
       }
       // Latest analytics row per stock_id.
-      const analyticsMap = new Map<string, { return_1m: number | null; return_3m: number | null; return_6m: number | null; return_1y: number | null }>();
-      for (const a of (analyticsRes.data ?? []) as Array<{ stock_id: string; as_of_date: string; return_1m: number | null; return_3m: number | null; return_6m: number | null; return_1y: number | null }>) {
+      const analyticsMap = new Map<string, { return_1m: number | null; return_3m: number | null; return_6m: number | null; return_1y: number | null; volume_efficiency: number | null; crowded_ratio: number | null }>();
+      for (const a of (analyticsRes.data ?? []) as Array<{ stock_id: string; as_of_date: string; return_1m: number | null; return_3m: number | null; return_6m: number | null; return_1y: number | null; volume_efficiency: number | null; crowded_ratio: number | null }>) {
         if (analyticsMap.has(a.stock_id)) continue; // first wins; we ordered desc
         analyticsMap.set(a.stock_id, a);
-      }
-      // Daily bars grouped by stock_id, ascending by date.
-      type Bar = { trade_date: string; close: number; volume: number };
-      const priceByStock = new Map<string, Bar[]>();
-      for (const p of (priceRes.data ?? []) as Array<{ stock_id: string; trade_date: string; close: number; volume: number }>) {
-        const arr = priceByStock.get(p.stock_id) ?? [];
-        arr.push({ trade_date: p.trade_date, close: Number(p.close), volume: Number(p.volume) });
-        priceByStock.set(p.stock_id, arr);
-      }
-      for (const arr of priceByStock.values()) {
-        arr.sort((a, b) => a.trade_date.localeCompare(b.trade_date));
       }
 
       const rows: ScreenerRow[] = stockRows.map((s) => {
@@ -1053,11 +1129,6 @@ export async function getScreenerRows(
         const f = fundMap.get(s.id);
         const a = analyticsMap.get(s.id);
         const num = (v: unknown): number | null => (v == null ? null : Number(v));
-        const shares = s.shares_outstanding == null ? null : Number(s.shares_outstanding);
-        const { efficiency, crowded } = deriveEfficiencyAndCrowded(
-          priceByStock.get(s.id) ?? [],
-          shares,
-        );
         return {
           symbol: s.symbol,
           name: s.name,
@@ -1075,8 +1146,8 @@ export async function getScreenerRows(
           return3m: a ? num(a.return_3m) : null,
           return6m: a ? num(a.return_6m) : null,
           return1y: a ? num(a.return_1y) : null,
-          volumeEfficiencyToday: efficiency,
-          crowdedRatio: crowded,
+          volumeEfficiencyToday: a ? num(a.volume_efficiency) : null,
+          crowdedRatio: a ? num(a.crowded_ratio) : null,
         } satisfies ScreenerRow;
       });
 
@@ -1090,42 +1161,217 @@ export async function getScreenerRows(
   );
 }
 
+// ============================================================================
+// Phase 3+ — Sector Strength (`ey_sector_daily`). Two read paths:
+//   - `getSectorStrengthLatest` — dashboard leaderboard tile (one row per
+//     sector, latest as_of_date, sorted by rs_vs_market_1m desc).
+//   - `getSectorDaily` — historical list (limit + optional sector filter)
+//     for future by-sector chart views.
+// ============================================================================
+
+const SECTOR_DAILY_COLUMNS =
+  'sector, as_of_date, member_count, breadth_pct, ' +
+  'sector_return_1w, sector_return_1m, sector_return_3m, sector_return_6m, sector_return_1y, ' +
+  'rs_vs_market_1w, rs_vs_market_1m, rs_vs_market_3m, rs_vs_market_6m, rs_vs_market_1y, ' +
+  'volume_efficiency_mean, crowded_ratio_mean';
+
+type SectorDailyRaw = {
+  sector: string;
+  as_of_date: string;
+  member_count: number;
+  breadth_pct: number | null;
+  sector_return_1w: number | null;
+  sector_return_1m: number | null;
+  sector_return_3m: number | null;
+  sector_return_6m: number | null;
+  sector_return_1y: number | null;
+  rs_vs_market_1w: number | null;
+  rs_vs_market_1m: number | null;
+  rs_vs_market_3m: number | null;
+  rs_vs_market_6m: number | null;
+  rs_vs_market_1y: number | null;
+  volume_efficiency_mean: number | null;
+  crowded_ratio_mean: number | null;
+};
+
+function toSectorDailyRow(r: SectorDailyRaw): SectorDailyRow {
+  const num = (v: number | null): number | null => (v == null ? null : Number(v));
+  return {
+    sector: r.sector,
+    asOfDate: r.as_of_date,
+    memberCount: Number(r.member_count),
+    breadthPct: num(r.breadth_pct),
+    sectorReturn1w: num(r.sector_return_1w),
+    sectorReturn1m: num(r.sector_return_1m),
+    sectorReturn3m: num(r.sector_return_3m),
+    sectorReturn6m: num(r.sector_return_6m),
+    sectorReturn1y: num(r.sector_return_1y),
+    rsVsMarket1w: num(r.rs_vs_market_1w),
+    rsVsMarket1m: num(r.rs_vs_market_1m),
+    rsVsMarket3m: num(r.rs_vs_market_3m),
+    rsVsMarket6m: num(r.rs_vs_market_6m),
+    rsVsMarket1y: num(r.rs_vs_market_1y),
+    volumeEfficiencyMean: num(r.volume_efficiency_mean),
+    crowdedRatioMean: num(r.crowded_ratio_mean),
+  };
+}
+
 /**
- * Compute volume efficiency (|close pct change| ÷ (latest volume ÷ shares × 100))
- * and crowded ratio (latest MA5 ÷ MA30) for a single stock's daily bars.
- * Returns null for both when the underlying data is missing or insufficient.
+ * Latest snapshot of every sector (one row per sector, deduped by sector
+ * key from the most-recent `as_of_date`). Sorted by `rs_vs_market_1m`
+ * descending so the strongest sectors appear first.
+ *
+ * Implementation note: we don't know the latest `as_of_date` without
+ * reading it, so we pull 200 rows ordered by date desc and dedupe
+ * client-side. With ~7 sectors × 1 row/day, the cap is well above any
+ * realistic growth pattern (a year of daily rows ≈ 2,555 — still under
+ * the cap). Bump the limit if sector count grows.
  */
-function deriveEfficiencyAndCrowded(
-  bars: { trade_date: string; close: number; volume: number }[],
-  shares: number | null,
-): { efficiency: number | null; crowded: number | null } {
-  const hasFloat = shares != null && shares > 0;
-  if (bars.length < 2) {
-    return { efficiency: null, crowded: null };
-  }
-  const last = bars[bars.length - 1];
-  const prev = bars[bars.length - 2];
+export async function getSectorStrengthLatest(): Promise<QueryResult<SectorDailyRow[]>> {
+  return withFallback(
+    async (supabase) => {
+      const { data, error } = await supabase
+        .from('ey_sector_daily')
+        .select(SECTOR_DAILY_COLUMNS)
+        .order('as_of_date', { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      const seen = new Set<string>();
+      const out: SectorDailyRow[] = [];
+      for (const r of (data ?? []) as unknown as SectorDailyRaw[]) {
+        if (seen.has(r.sector)) continue;
+        seen.add(r.sector);
+        out.push(toSectorDailyRow(r));
+      }
+      return out.sort((a, b) => (b.rsVsMarket1m ?? -Infinity) - (a.rsVsMarket1m ?? -Infinity));
+    },
+    () => getMockSectorDaily(null, 50),
+  );
+}
 
-  const turnoverPctToday =
-    hasFloat && shares != null && last != null ? (last.volume / shares) * 100 : null;
-  const dailyChangePct =
-    prev != null && last != null && prev.close !== 0
-      ? ((last.close - prev.close) / prev.close) * 100
-      : null;
-  const efficiency =
-    dailyChangePct != null && turnoverPctToday != null && turnoverPctToday > 0
-      ? Math.abs(dailyChangePct) / turnoverPctToday
-      : null;
+/**
+ * Historical `ey_sector_daily` rows, optionally filtered by sector.
+ * Returns rows in descending `as_of_date` order. Used by future by-sector
+ * chart views — the dashboard leaderboard tile prefers
+ * `getSectorStrengthLatest` instead.
+ */
+export async function getSectorDaily(
+  opts: { limit?: number; sector?: string } = {},
+): Promise<QueryResult<SectorDailyRow[]>> {
+  const limit = opts.limit ?? 50;
+  return withFallback(
+    async (supabase) => {
+      let q = supabase
+        .from('ey_sector_daily')
+        .select(SECTOR_DAILY_COLUMNS)
+        .order('as_of_date', { ascending: false })
+        .limit(limit);
+      if (opts.sector) q = q.eq('sector', opts.sector);
+      const { data, error } = await q;
+      if (error) throw error;
+      return ((data ?? []) as unknown as SectorDailyRaw[]).map(toSectorDailyRow);
+    },
+    () => getMockSectorDaily(opts.sector ?? null, limit),
+  );
+}
 
-  // Crowded ratio: need ≥30 rows for the MA30 window to be full.
-  let crowded: number | null = null;
-  if (bars.length >= 30) {
-    const sum5 = bars.slice(-5).reduce((s, b) => s + b.volume, 0) / 5;
-    const sum30 = bars.slice(-30).reduce((s, b) => s + b.volume, 0) / 30;
-    crowded = sum30 > 0 ? sum5 / sum30 : null;
-  }
+/**
+ * Constituents of one sector for the `/sectors/[sector]` detail page.
+ * Joins `ey_stocks` (filtered by sector) with the most-recent
+ * `ey_quote_snapshot` row and the latest `ey_stock_analytics.return_1m`
+ * for each stock. Sorted by `return_1m` desc so the leader is on top.
+ *
+ * Implementation: one query per table — `ey_stocks` filters drive the
+ * sector scope, then a single `in()` call to `ey_quote_snapshot` and a
+ * single `in()` call to the analytics table. Three round-trips total.
+ * For our scale (~30 stocks) this is fine; if the universe grows,
+ * consider a SQL view that joins on the server.
+ */
+export async function getStocksBySector(
+  sector: string,
+): Promise<QueryResult<SectorMember[]>> {
+  return withFallback(
+    async (supabase) => {
+      const { data: stockRows, error: stockErr } = await supabase
+        .from('ey_stocks')
+        .select('id, symbol, name, market, currency, sector')
+        .eq('is_active', true)
+        .eq('sector', sector);
+      if (stockErr) throw stockErr;
+      const stocks = (stockRows ?? []) as Array<{
+        id: string;
+        symbol: string;
+        name: string;
+        market: Market;
+        currency: string;
+        sector: string | null;
+      }>;
+      if (stocks.length === 0) return [];
 
-  return { efficiency, crowded };
+      const stockIds = stocks.map((s) => s.id);
+
+      const { data: quoteRows, error: quoteErr } = await supabase
+        .from('ey_quote_snapshot')
+        .select('stock_id, last_price, change, change_percent, as_of')
+        .in('stock_id', stockIds);
+      if (quoteErr) throw quoteErr;
+      const quoteMap = new Map<string, {
+        lastPrice: number;
+        change: number;
+        changePercent: number;
+      }>();
+      for (const q of (quoteRows ?? []) as Array<{
+        stock_id: string;
+        last_price: number;
+        change: number;
+        change_percent: number;
+        as_of: string;
+      }>) {
+        quoteMap.set(q.stock_id, {
+          lastPrice: Number(q.last_price),
+          change: Number(q.change),
+          changePercent: Number(q.change_percent),
+        });
+      }
+
+      const { data: analyticsRows, error: analyticsErr } = await supabase
+        .from('ey_stock_analytics')
+        .select('stock_id, as_of_date, return_1m')
+        .in('stock_id', stockIds)
+        .order('as_of_date', { ascending: false });
+      if (analyticsErr) throw analyticsErr;
+      const returnMap = new Map<string, number | null>();
+      for (const r of (analyticsRows ?? []) as Array<{
+        stock_id: string;
+        as_of_date: string;
+        return_1m: number | null;
+      }>) {
+        // First row per stock_id is the latest — don't overwrite.
+        if (returnMap.has(r.stock_id)) continue;
+        returnMap.set(r.stock_id, r.return_1m == null ? null : Number(r.return_1m));
+      }
+
+      const num = (v: number | null): number | null =>
+        v == null ? null : Number(v);
+      const out: SectorMember[] = stocks.map((s) => {
+        const q = quoteMap.get(s.id) ?? null;
+        return {
+          symbol: s.symbol,
+          name: s.name,
+          market: s.market,
+          currency: s.currency,
+          sector: s.sector,
+          lastPrice: q ? q.lastPrice : null,
+          changePercent: q ? q.changePercent : null,
+          return1m: num(returnMap.get(s.id) ?? null),
+        } satisfies SectorMember;
+      });
+      return out.sort(
+        (a, b) => (b.return1m ?? -Infinity) - (a.return1m ?? -Infinity),
+      );
+    },
+    () => getMockStocksBySector(sector),
+  );
 }
 
 /** Null-safe filtering — null values pass when no constraint is specified. */

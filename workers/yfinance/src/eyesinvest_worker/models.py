@@ -57,6 +57,21 @@ class StockRecord(BaseModel):
     currency: str
 
 
+class StockRecordWithSector(BaseModel):
+    """Active stock enriched with sector + shares_outstanding for sector-strength work.
+
+    `sector` may be None (rare — only stocks that predate the seed refresh).
+    `shares_outstanding` may be None when `sync-fundamentals` hasn't populated it yet.
+    """
+
+    id: str
+    symbol: str
+    market: str
+    currency: str
+    sector: str | None = None
+    shares_outstanding: int | None = None
+
+
 class StockAnalyticsRow(BaseModel):
     """One row of `ey_stock_analytics`."""
 
@@ -75,6 +90,41 @@ class StockAnalyticsRow(BaseModel):
     return_3m: float | None = None
     return_6m: float | None = None
     return_1y: float | None = None
+    return_1w: float | None = None
+    # Phase 3+ sector strength — nullable so pre-existing rows stay valid.
+    # All three are populated by `sync-sector-strength` (see providers/sector_strength.py).
+    volume_efficiency: float | None = None
+    crowded_ratio: float | None = None
+    relative_strength: float | None = None
+    source: str = "worker"
+
+
+class SectorDailyRow(BaseModel):
+    """One row of `ey_sector_daily` — sector-level rollup for an as-of date.
+
+    `sector` is the English string from `ey_stocks.sector` (US+HK collapse under
+    one key; per-market splits are a dashboard filter, not a PK component).
+    `rs_vs_market_N` is computed against the global market benchmark — the
+    equal-weight mean of SPX and HSI trailing returns for window N. See
+    `providers/sector_strength.py` for the formula.
+    """
+
+    sector: str
+    as_of_date: date
+    member_count: int
+    sector_return_1w: float | None = None
+    sector_return_1m: float | None = None
+    sector_return_3m: float | None = None
+    sector_return_6m: float | None = None
+    sector_return_1y: float | None = None
+    rs_vs_market_1w: float | None = None
+    rs_vs_market_1m: float | None = None
+    rs_vs_market_3m: float | None = None
+    rs_vs_market_6m: float | None = None
+    rs_vs_market_1y: float | None = None
+    breadth_pct: float | None = None
+    volume_efficiency_mean: float | None = None
+    crowded_ratio_mean: float | None = None
     source: str = "worker"
 
 
