@@ -781,40 +781,13 @@ export async function getVolumeEfficiency(
         : Number(stockRow.shares_outstanding);
       const hasFloatData = shares != null && shares > 0;
 
-      // Phase 3+ short-circuit: read the persisted `volume_efficiency`
-      // column populated by `sync-sector-strength`. When present, return
-      // a stub shape with `series: []` so the chart can render its
-      // empty-state branch — same shape as the existing per-request
-      // compute, just without the 30-day window. Falls back to the
-      // historical per-request computation when the column is null
-      // (worker hasn't run yet, or shares float is unknown).
-      const { data: analyticsRow, error: analyticsErr } = await supabase
-        .from('ey_stock_analytics')
-        .select('volume_efficiency, as_of_date')
-        .eq('stock_id', stockRow.id)
-        .order('as_of_date', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (analyticsErr) throw analyticsErr;
-      if (analyticsRow?.volume_efficiency != null) {
-        const efficiencyToday = Number(analyticsRow.volume_efficiency);
-        return {
-          symbol: stockRow.symbol,
-          market: stockRow.market as Market,
-          efficiencyToday,
-          // `turnoverPctToday` and `avgTurnoverPct30d` are not stored in the
-          // persisted column — left null. The headline ratio is what the
-          // panel needs; the per-day breakdown lives in `series` which is
-          // empty for the persisted-column path (chart shows its no-data
-          // branch, same as the empty-bars case in the mock).
-          turnoverPctToday: null,
-          avgTurnoverPct30d: null,
-          sharesOutstanding: shares,
-          hasFloatData,
-          asOfDate: analyticsRow.as_of_date,
-          series: [],
-        } satisfies VolumeEfficiency;
-      }
+      // Note: `ey_stock_analytics.volume_efficiency` is populated by
+      // `sync-sector-strength` for the sector-strength aggregation pass and
+      // for the screener's filter UI, but we deliberately do NOT short-
+      // circuit here. The persisted column is a single-day scalar — the
+      // chart needs a 30-day per-day series, which only the per-request
+      // `ey_price_1d` compute below can produce. Reading the column here
+      // would leave the chart with `series: []` and no bars to draw.
 
       const { data, error } = await supabase
         .from('ey_price_1d')
@@ -915,47 +888,14 @@ export async function getCrowdedRatio(
       if (stockErr) throw stockErr;
       if (!stockRow) return null;
 
-      // Phase 3+ short-circuit: read the persisted `crowded_ratio`
-      // column populated by `sync-sector-strength` (MA5÷MA30, same
-      // definition as the per-request compute below). When present,
-      // return the stub shape with `series: []` — preserves the panel
-      // headline and degrades the chart to its empty branch. Falls
-      // back to the historical computation when the column is null
-      // (worker hasn't run yet, or insufficient history).
-      const { data: analyticsRow, error: analyticsErr } = await supabase
-        .from('ey_stock_analytics')
-        .select('crowded_ratio, as_of_date')
-        .eq('stock_id', stockRow.id)
-        .order('as_of_date', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (analyticsErr) throw analyticsErr;
-      if (analyticsRow?.crowded_ratio != null) {
-        const ratio = Number(analyticsRow.crowded_ratio);
-        const regime: CrowdedRegime | null =
-          ratio >= 1.5
-            ? 'crowded'
-            : ratio >= 1.2
-              ? 'elevated'
-              : ratio >= 0.8
-                ? 'normal'
-                : 'subdued';
-        return {
-          symbol: stockRow.symbol,
-          market: stockRow.market as Market,
-          ratio,
-          // MA5/MA30 themselves are not stored in the persisted column —
-          // the panel can still show the headline ratio and the empty
-          // chart. Re-running the per-request compute is the only way
-          // to recover those; we don't bother here because the chart's
-          // empty-state branch already covers it.
-          ma5: null,
-          ma30: null,
-          regime,
-          series: [],
-          asOfDate: analyticsRow.as_of_date,
-        } satisfies CrowdedRatio;
-      }
+      // Note: `ey_stock_analytics.crowded_ratio` is populated by
+      // `sync-sector-strength` for the sector-strength aggregation pass
+      // and for the screener's filter UI, but we deliberately do NOT
+      // short-circuit here. The persisted column is a single-day
+      // MA5÷MA30 scalar — the chart needs a per-day series, which only
+      // the per-request `ey_price_1d` compute below can produce.
+      // Reading the column here would leave the chart with `series: []`
+      // and no MA5/MA30 subplot to draw.
 
       const { data, error } = await supabase
         .from('ey_price_1d')
