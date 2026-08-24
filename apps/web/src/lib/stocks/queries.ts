@@ -40,7 +40,7 @@ import type {
   CrowdedRatioPoint,
   CrowdedRegime,
   EfficiencyPoint,
-  GreenRedFilter,
+  GreenShareFilter,
   RelativeStrength,
   ScreenerFilters,
   ShortInterestTrendFilter,
@@ -1462,6 +1462,12 @@ function applyScreenerFilters(
     ) {
       return false;
     }
+    if (
+      f.crowdedRatioMax != null &&
+      (r.crowdedRatio == null || r.crowdedRatio >= f.crowdedRatioMax)
+    ) {
+      return false;
+    }
     // MA trend filters — slope > 0 means "up", ≤ 0 means "down".
     // Slope is null on the first row of the analytics series, so a row
     // with `r.ma5Slope == null` cannot match either 'up' or 'down' and
@@ -1470,11 +1476,14 @@ function applyScreenerFilters(
     if (f.ma5Trend === 'down' && (r.ma5Slope == null || r.ma5Slope >= 0)) return false;
     if (f.ma20Trend === 'up' && (r.ma20Slope == null || r.ma20Slope <= 0)) return false;
     if (f.ma20Trend === 'down' && (r.ma20Slope == null || r.ma20Slope >= 0)) return false;
-    if (f.greenRed) {
-      const ratio = r.greenRedVolumeRatio1m;
-      if (ratio == null) return false;
-      if (f.greenRed.direction === 'green' && ratio < f.greenRed.threshold) return false;
-      if (f.greenRed.direction === 'red' && ratio * f.greenRed.threshold > 1) return false;
+    if (f.greenShare) {
+      // Sum-based share: 0..1 fraction. 'green' means up-bars carried
+      // ≥ threshold of total volume; 'red' means up-bars carried
+      // ≤ (1 - threshold) of total volume (i.e. down-bars dominated).
+      const share = r.greenRedVolumeShare1m;
+      if (share == null) return false;
+      if (f.greenShare.direction === 'green' && share < f.greenShare.threshold) return false;
+      if (f.greenShare.direction === 'red' && share > 1 - f.greenShare.threshold) return false;
     }
     if (f.shortInterestTrend && !matchesShortInterestTrend(
       interestBySymbol.get(r.symbol) ?? [],

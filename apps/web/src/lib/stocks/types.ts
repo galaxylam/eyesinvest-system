@@ -321,12 +321,15 @@ export interface ScreenerRow {
   squeezeScore: number | null;
 }
 
-/** Direction + threshold for the 1M green-vs-red volume ratio filter. The
- *  ratio is `mean(volume on up bars) ÷ mean(volume on down bars)`. */
-export interface GreenRedFilter {
+/** Direction + threshold for the 1M green-share volume filter. The share is
+ *  `sum(volume on up bars) ÷ (sum on up bars + sum on down bars)` over the
+ *  trailing 30 trading days — a 0..1 fraction (0.5 = up-bars carried half
+ *  the volume, >0.5 = up-bars dominated, <0.5 = down-bars dominated). */
+export interface GreenShareFilter {
   direction: 'green' | 'red';
-  /** 1.1 = ≥10% higher, 1.2 = ≥20% higher, 1.3 = ≥30% higher. */
-  threshold: 1.1 | 1.2 | 1.3;
+  /** 0.55 = share ≥ 55%, 0.60 = ≥ 60%, 0.65 = ≥ 65%. The 'red' direction
+   *  is implemented as `share ≤ 1 − threshold` (0.35, 0.40, 0.45). */
+  threshold: 0.55 | 0.6 | 0.65;
 }
 
 /** Direction + number of consecutive periods for the short-interest trend
@@ -353,12 +356,17 @@ export interface ScreenerFilters {
   volumeEfficiencyMin?: number;
   /** Lower bound on crowded ratio (MA5÷MA30, e.g. 1.5 = ≥1.5×). */
   crowdedRatioMin?: number;
+  /** Upper bound on crowded ratio (e.g. 1 = strictly < 1× — the subdued /
+   *  quiet-activity regime). Mutually compatible with `crowdedRatioMin` in
+   *  principle, but the UI treats them as separate dropdown options. */
+  crowdedRatioMax?: number;
   /** 'up' = latest ma5 > previous ma5, 'down' = latest ma5 ≤ previous ma5. */
   ma5Trend?: 'up' | 'down';
   /** 'up' = latest ma20 > previous ma20, 'down' = latest ma20 ≤ previous ma20. */
   ma20Trend?: 'up' | 'down';
-  /** 1M green/red volume ratio — green means up-bars traded ≥ threshold × more, red means down-bars did. */
-  greenRed?: GreenRedFilter;
+  /** 1M green-share volume — green means up-bars carried ≥ threshold of total
+   *  volume in the trailing 30 trading days, red means down-bars did. */
+  greenShare?: GreenShareFilter;
   /** Short-interest settlement trend over the last N consecutive periods. */
   shortInterestTrend?: ShortInterestTrendFilter;
   /** Lower bound on the 0..100 short-squeeze score (e.g. 60 = ≥Elevated).

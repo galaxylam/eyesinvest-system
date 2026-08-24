@@ -21,14 +21,16 @@ interface ScreenerPageProps {
     ret1m?: string;
     eff?: string;
     crowd?: string;
+    /** Crowded ratio upper bound — currently only '1' for the "<1×" subdued filter. */
+    crowdlt?: string;
     /** Short-squeeze score lower bound (0..100). */
     sq?: string;
     /** MA5 trend: 'up' | 'down' */
     ma5?: string;
     /** MA20 trend: 'up' | 'down' */
     ma20?: string;
-    /** Green/red ratio: 'g1.1' / 'g1.2' / 'g1.3' / 'r1.1' / 'r1.2' / 'r1.3' */
-    gr?: string;
+    /** Green-share threshold: 'g0.55' / 'g0.6' / 'g0.65' / 'r0.55' / 'r0.6' / 'r0.65' */
+    gs?: string;
     /** Short-interest trend: 'u1' / 'u2' / 'u3' / 'd1' / 'd2' / 'd3' */
     sit?: string;
     sort?: string;
@@ -75,20 +77,24 @@ function parseFilters(sp: Awaited<ScreenerPageProps['searchParams']>): ScreenerF
     const n = Number(sp.crowd);
     if (Number.isFinite(n) && n >= 0) f.crowdedRatioMin = n;
   }
+  if (sp.crowdlt) {
+    const n = Number(sp.crowdlt);
+    if (Number.isFinite(n) && n > 0) f.crowdedRatioMax = n;
+  }
   if (sp.sq) {
     const n = Number(sp.sq);
     if (Number.isFinite(n) && n >= 0 && n <= 100) f.squeezeMin = n;
   }
   if (sp.ma5 === 'up' || sp.ma5 === 'down') f.ma5Trend = sp.ma5;
   if (sp.ma20 === 'up' || sp.ma20 === 'down') f.ma20Trend = sp.ma20;
-  // green/red: encoding is e.g. 'g1.2' or 'r1.3'. Direction is the first
-  // char; threshold is the rest. Anything malformed is silently ignored so
-  // a hand-edited URL doesn't 500 the page.
-  if (sp.gr) {
-    const c = sp.gr[0];
-    const n = Number(sp.gr.slice(1));
-    if ((c === 'g' || c === 'r') && (n === 1.1 || n === 1.2 || n === 1.3)) {
-      f.greenRed = { direction: c === 'g' ? 'green' : 'red', threshold: n as 1.1 | 1.2 | 1.3 };
+  // green-share: encoding is e.g. 'g0.55' or 'r0.6'. Direction is the first
+  // char; share threshold (0..1) is the rest. Anything malformed is silently
+  // ignored so a hand-edited URL doesn't 500 the page.
+  if (sp.gs) {
+    const c = sp.gs[0];
+    const n = Number(sp.gs.slice(1));
+    if ((c === 'g' || c === 'r') && (n === 0.55 || n === 0.6 || n === 0.65)) {
+      f.greenShare = { direction: c === 'g' ? 'green' : 'red', threshold: n as 0.55 | 0.6 | 0.65 };
     }
   }
   if (sp.sit) {

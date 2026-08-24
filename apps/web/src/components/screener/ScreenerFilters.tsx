@@ -7,12 +7,12 @@ import type { ScreenerFilters } from '@/lib/stocks/queries';
 
 /** Serialise the four new combined filters into compact URL params.
  *  - ma5 / ma20: 'up' | 'down' (or undefined)
- *  - gr: '<direction><threshold>' — 'g1.1', 'r1.3', etc.
+ *  - gs: '<direction><threshold>' — 'g0.55', 'r0.65', etc. (green-share)
  *  - sit: '<direction><periods>' — 'u2', 'd3', etc. */
 function encodeMaTrend(v: 'up' | 'down' | undefined): string | undefined {
   return v;
 }
-function encodeGr(v: ScreenerFilters['greenRed']): string | undefined {
+function encodeGs(v: ScreenerFilters['greenShare']): string | undefined {
   if (!v) return undefined;
   return `${v.direction[0]}${v.threshold}`;
 }
@@ -62,14 +62,16 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
     else params.delete('eff');
     if (next.crowdedRatioMin != null) params.set('crowd', String(next.crowdedRatioMin));
     else params.delete('crowd');
+    if (next.crowdedRatioMax != null) params.set('crowdlt', String(next.crowdedRatioMax));
+    else params.delete('crowdlt');
     if (next.squeezeMin != null) params.set('sq', String(next.squeezeMin));
     else params.delete('sq');
     const ma5 = encodeMaTrend(next.ma5Trend);
     if (ma5) params.set('ma5', ma5); else params.delete('ma5');
     const ma20 = encodeMaTrend(next.ma20Trend);
     if (ma20) params.set('ma20', ma20); else params.delete('ma20');
-    const gr = encodeGr(next.greenRed);
-    if (gr) params.set('gr', gr); else params.delete('gr');
+    const gs = encodeGs(next.greenShare);
+    if (gs) params.set('gs', gs); else params.delete('gs');
     const sit = encodeSit(next.shortInterestTrend);
     if (sit) params.set('sit', sit); else params.delete('sit');
 
@@ -94,10 +96,11 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
     current.return1mMin != null ||
     current.volumeEfficiencyMin != null ||
     current.crowdedRatioMin != null ||
+    current.crowdedRatioMax != null ||
     current.squeezeMin != null ||
     current.ma5Trend != null ||
     current.ma20Trend != null ||
-    current.greenRed != null ||
+    current.greenShare != null ||
     current.shortInterestTrend != null;
 
   return (
@@ -195,16 +198,36 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
       />
       <SelectField
         label={t('filter.crowdedRatio')}
-        value={current.crowdedRatioMin == null ? '' : String(current.crowdedRatioMin)}
-        onChange={(v) =>
-          apply({ ...current, crowdedRatioMin: v === '' ? undefined : Number(v) })
+        value={
+          current.crowdedRatioMax != null
+            ? `lt${current.crowdedRatioMax}`
+            : current.crowdedRatioMin == null
+              ? ''
+              : String(current.crowdedRatioMin)
         }
+        onChange={(v) => {
+          if (v === '') {
+            apply({ ...current, crowdedRatioMin: undefined, crowdedRatioMax: undefined });
+            return;
+          }
+          if (v.startsWith('lt')) {
+            // "< 1×" subdued bucket — exclusive upper bound.
+            apply({
+              ...current,
+              crowdedRatioMin: undefined,
+              crowdedRatioMax: Number(v.slice(2)),
+            });
+            return;
+          }
+          apply({ ...current, crowdedRatioMin: Number(v), crowdedRatioMax: undefined });
+        }}
         options={[
           { value: '', label: t('filter.any') },
           { value: '1', label: t('filter.crowd1') },
           { value: '1.2', label: t('filter.crowd1_2') },
           { value: '1.5', label: t('filter.crowd1_5') },
           { value: '2', label: t('filter.crowd2') },
+          { value: 'lt1', label: t('filter.crowdLT1') },
         ]}
       />
       <SelectField
@@ -245,25 +268,25 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
         ]}
       />
       <SelectField
-        label={t('filter.greenRed')}
-        value={current.greenRed ? `${current.greenRed.direction[0]}${current.greenRed.threshold}` : ''}
+        label={t('filter.greenShare')}
+        value={current.greenShare ? `${current.greenShare.direction[0]}${current.greenShare.threshold}` : ''}
         onChange={(v) => {
           if (v === '') {
-            apply({ ...current, greenRed: undefined });
+            apply({ ...current, greenShare: undefined });
             return;
           }
           const direction = v[0] === 'g' ? 'green' : 'red';
-          const threshold = Number(v.slice(1)) as 1.1 | 1.2 | 1.3;
-          apply({ ...current, greenRed: { direction, threshold } });
+          const threshold = Number(v.slice(1)) as 0.55 | 0.6 | 0.65;
+          apply({ ...current, greenShare: { direction, threshold } });
         }}
         options={[
           { value: '', label: t('filter.any') },
-          { value: 'g1.1', label: t('filter.greenGE10') },
-          { value: 'g1.2', label: t('filter.greenGE20') },
-          { value: 'g1.3', label: t('filter.greenGE30') },
-          { value: 'r1.1', label: t('filter.redGE10') },
-          { value: 'r1.2', label: t('filter.redGE20') },
-          { value: 'r1.3', label: t('filter.redGE30') },
+          { value: 'g0.55', label: t('filter.greenGE55') },
+          { value: 'g0.6', label: t('filter.greenGE60') },
+          { value: 'g0.65', label: t('filter.greenGE65') },
+          { value: 'r0.55', label: t('filter.redGE55') },
+          { value: 'r0.6', label: t('filter.redGE60') },
+          { value: 'r0.65', label: t('filter.redGE65') },
         ]}
       />
       <SelectField
