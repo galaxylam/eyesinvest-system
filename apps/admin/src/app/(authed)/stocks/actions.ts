@@ -5,10 +5,14 @@ import { redirect } from 'next/navigation';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { createAdminClient, isSupabaseWritable } from '@/lib/supabase/admin';
+import { detectMarketCurrency } from '@/lib/stocks/symbol';
 
 const StockSchema = z.object({
   symbol: z.string().min(1, 'Symbol is required').max(20),
   name: z.string().min(1, 'Company name is required').max(200),
+  // Market and currency are derived from the symbol server-side — clients
+  // may still send them for backwards compat, but the values are overwritten
+  // by `detectMarketCurrency` below.
   market: z.enum(['US', 'HK']),
   currency: z.string().min(2).max(6),
   exchange: z.string().max(40).optional().nullable(),
@@ -74,6 +78,15 @@ export async function saveStockAction(input: StockFormInput): Promise<ActionResu
   }
   const data = parsed.data;
 
+  // Server-side auto-detect — client hints are ignored so a malformed UI
+  // can't write the wrong market for a given symbol.
+  const detected = detectMarketCurrency(data.symbol);
+  if (!detected) {
+    return { ok: false, error: `Cannot determine market for symbol "${data.symbol}".` };
+  }
+  const market = detected.market;
+  const currency = detected.currency;
+
   if (!isSupabaseWritable()) {
     console.warn('[saveStockAction] Supabase not configured — skipping write (dev only)');
     revalidatePath('/stocks');
@@ -84,15 +97,15 @@ export async function saveStockAction(input: StockFormInput): Promise<ActionResu
     const supabase = createAdminClient();
     const conflicts = await findExistingConflicts(
       supabase,
-      [{ symbol: data.symbol, market: data.market }],
+      [{ symbol: data.symbol, market }],
       input.id,
     );
-    if (conflicts.has(`${data.symbol}|${data.market}`)) {
+    if (conflicts.has(`${data.symbol}|${market}`)) {
       return {
         ok: false,
         error: input.id
-          ? `Another stock already uses ${data.symbol} (${data.market}).`
-          : `Stock ${data.symbol} already exists in ${data.market}.`,
+          ? `Another stock already uses ${data.symbol} (${market}).`
+          : `Stock ${data.symbol} already exists in ${market}.`,
       };
     }
 
@@ -102,8 +115,8 @@ export async function saveStockAction(input: StockFormInput): Promise<ActionResu
         {
           symbol: data.symbol,
           name: data.name,
-          market: data.market,
-          currency: data.currency,
+          market,
+          currency,
           exchange: data.exchange ?? null,
           sector: data.sector ?? null,
           industry: data.industry ?? null,
@@ -183,9 +196,13 @@ export async function bulkImportStocksAction(
     };
   }
 
-  // Phase 1: validate each row + dedupe within the batch (last write wins).
+  // Phase 1: validate each row + auto-detect market/currency + dedupe within
+  // the batch (last write wins).
   const errors: BulkImportError[] = [];
-  const dedup = new Map<string, { row: StockFormInput; rowNumber: number }>();
+  const dedup = new Map<
+    string,
+    { row: StockFormInput; rowNumber: number; market: string; currency: string }
+  >();
   rows.forEach((raw, idx) => {
     const rowNumber = idx + 1;
     const parsed = StockSchema.safeParse(raw);
@@ -198,8 +215,22 @@ export async function bulkImportStocksAction(
       return;
     }
     const data = parsed.data;
-    const key = `${data.symbol.toUpperCase()}|${data.market}`;
-    dedup.set(key, { row: data, rowNumber });
+    const detected = detectMarketCurrency(data.symbol);
+    if (!detected) {
+      errors.push({
+        row: rowNumber,
+        symbol: data.symbol,
+        reason: `Cannot determine market for symbol "${data.symbol}".`,
+      });
+      return;
+    }
+    const key = `${data.symbol.toUpperCase()}|${detected.market}`;
+    dedup.set(key, {
+      row: data,
+      rowNumber,
+      market: detected.market,
+      currency: detected.currency,
+    });
   });
 
   const validEntries = Array.from(dedup.values());
@@ -213,16 +244,16 @@ export async function bulkImportStocksAction(
       const supabase = createAdminClient();
       const conflicts = await findExistingConflicts(
         supabase,
-        validEntries.map((e) => ({ symbol: e.row.symbol, market: e.row.market })),
+        validEntries.map((e) => ({ symbol: e.row.symbol, market: e.market })),
       );
       rowsToUpsert = [];
       for (const entry of validEntries) {
-        const key = `${entry.row.symbol}|${entry.row.market}`;
+        const key = `${entry.row.symbol}|${entry.market}`;
         if (conflicts.has(key)) {
           errors.push({
             row: entry.rowNumber,
             symbol: entry.row.symbol,
-            reason: `Duplicate of existing ${entry.row.symbol} (${entry.row.market})`,
+            reason: `Duplicate of existing ${entry.row.symbol} (${entry.market})`,
           });
         } else {
           rowsToUpsert.push(entry);
@@ -251,8 +282,8 @@ export async function bulkImportStocksAction(
     const payload = rowsToUpsert.map((e) => ({
       symbol: e.row.symbol,
       name: e.row.name,
-      market: e.row.market,
-      currency: e.row.currency,
+      market: e.market,
+      currency: e.currency,
       exchange: e.row.exchange ?? null,
       sector: e.row.sector ?? null,
       industry: e.row.industry ?? null,
@@ -278,13 +309,16 @@ export async function bulkImportStocksAction(
 
 /**
  * Form action variant used by the new/edit pages — redirects on success.
+ * Market/currency are NOT read from formData; they're auto-detected from
+ * the symbol by `saveStockAction`.
  */
 export async function saveStockFormAction(formData: FormData) {
   const input: StockFormInput = {
     symbol: String(formData.get('symbol') ?? ''),
     name: String(formData.get('name') ?? ''),
-    market: formData.get('market') === 'HK' ? 'HK' : 'US',
-    currency: String(formData.get('currency') ?? 'USD'),
+    // Placeholders — overwritten by detectMarketCurrency in saveStockAction.
+    market: 'US',
+    currency: 'USD',
     exchange: formData.get('exchange') ? String(formData.get('exchange')) : null,
     sector: formData.get('sector') ? String(formData.get('sector')) : null,
     industry: formData.get('industry') ? String(formData.get('industry')) : null,

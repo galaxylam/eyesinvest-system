@@ -12,12 +12,12 @@ interface BulkImportDialogProps {
   onClose: () => void;
 }
 
-/** Expected column order — keep in sync with `parseRows` below. */
+/** Expected column order — keep in sync with `parseRows` below. Market and
+ *  currency are NOT in the paste format; they're auto-detected from the
+ *  symbol server-side (`.HK` → HK/HKD, otherwise US/USD). */
 const COLUMNS = [
   'symbol',
   'name',
-  'market',
-  'currency',
   'exchange',
   'sector',
   'industry',
@@ -25,15 +25,20 @@ const COLUMNS = [
 ] as const;
 
 const SAMPLE_TSV =
-  'symbol\tname\tmarket\tcurrency\texchange\tsector\tindustry\tisActive\n' +
-  'AAPL\tApple Inc.\tUS\tUSD\tNASDAQ\tTechnology\tConsumer Electronics\ttrue\n' +
-  '0700.HK\tTencent\tHK\tHKD\tHKEX\tCommunication Services\tInternet Content\ttrue';
+  'symbol\tname\texchange\tsector\tindustry\tisActive\n' +
+  'AAPL\tApple Inc.\tNASDAQ\tTechnology\tConsumer Electronics\ttrue\n' +
+  '0700.HK\tTencent\tHKEX\tCommunication Services\tInternet Content\ttrue';
 
 /**
  * Lightweight TSV/CSV parser. Splits on the first delimiter found across the
  * input — tabs win if any line has one, otherwise commas. Quote handling is
  * intentionally minimal (no embedded newlines); spreadsheets typically export
  * one record per line, so the rare case isn't worth the complexity.
+ *
+ * Market/currency are intentionally NOT read from the paste — they're
+ * derived from the symbol server-side. The schema validation passes them as
+ * placeholders; `bulkImportStocksAction` calls `detectMarketCurrency` to set
+ * the canonical values.
  */
 function parseRows(text: string): StockFormInput[] {
   const trimmed = text.trim();
@@ -57,16 +62,16 @@ function parseRows(text: string): StockFormInput[] {
   return rows.map((cols) => {
     const pad = [...cols, ...Array(COLUMNS.length).fill('')] as string[];
     const symbol = (pad[0] ?? '').toUpperCase();
-    const market = (pad[2] ?? '').toUpperCase();
-    const isActiveRaw = (pad[7] ?? '').toLowerCase();
+    const isActiveRaw = (pad[5] ?? '').toLowerCase();
     return {
       symbol,
       name: pad[1] ?? '',
-      market: market === 'HK' ? 'HK' : 'US',
-      currency: (pad[3] ?? 'USD').toUpperCase(),
-      exchange: pad[4] || null,
-      sector: pad[5] || null,
-      industry: pad[6] || null,
+      // Placeholders — overwritten by detectMarketCurrency in the server action.
+      market: 'US',
+      currency: 'USD',
+      exchange: pad[2] || null,
+      sector: pad[3] || null,
+      industry: pad[4] || null,
       isActive: ['1', 'true', 'yes', 'y', 't'].includes(isActiveRaw),
     } satisfies StockFormInput;
   });
@@ -131,12 +136,18 @@ export function BulkImportDialog({ open, onClose }: BulkImportDialogProps) {
           <p>
             Columns in order:{' '}
             <code className="rounded bg-bg-muted px-1 py-0.5 text-fg">
-              symbol, name, market, currency, exchange, sector, industry, isActive
+              symbol, name, exchange, sector, industry, isActive
             </code>
-            . <code className="text-fg">market</code> must be{' '}
-            <code className="text-fg">US</code> or <code className="text-fg">HK</code>;{' '}
+            . <code className="text-fg">exchange</code>,{' '}
+            <code className="text-fg">sector</code>,{' '}
+            <code className="text-fg">industry</code> are optional;{' '}
             <code className="text-fg">isActive</code> accepts{' '}
             <code className="text-fg">true/false/1/0</code>.
+          </p>
+          <p>
+            Market and currency are auto-detected from the symbol:{' '}
+            <code className="text-fg">*.HK</code> → HK / HKD; anything else →
+            US / USD.
           </p>
           <details className="text-fg-subtle">
             <summary className="cursor-pointer hover:text-fg">Sample (TSV)</summary>
@@ -151,7 +162,7 @@ export function BulkImportDialog({ open, onClose }: BulkImportDialogProps) {
           onChange={(e) => setText(e.target.value)}
           rows={10}
           spellCheck={false}
-          placeholder={'AAPL\tApple Inc.\tUS\tUSD\tNASDAQ\tTechnology\tConsumer Electronics\ttrue\n0700.HK\tTencent\tHK\tHKD\tHKEX\t...\ttrue'}
+          placeholder={'AAPL\tApple Inc.\tNASDAQ\tTechnology\tConsumer Electronics\ttrue\n0700.HK\tTencent\tHKEX\t...\t...\ttrue'}
           className={cn(
             'w-full rounded-md border border-border bg-bg p-2 font-mono text-xs text-fg shadow-sm',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',

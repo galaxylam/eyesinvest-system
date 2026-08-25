@@ -2,7 +2,8 @@
 
 import { useState, useTransition, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Input, Label, cn } from '@eyesinvest/ui';
+import { Button, Input, Label } from '@eyesinvest/ui';
+import { detectMarketCurrency } from '@/lib/stocks/symbol';
 import type { StockFormInput } from '@/app/(authed)/stocks/actions';
 import { saveStockAction } from '@/app/(authed)/stocks/actions';
 
@@ -11,33 +12,33 @@ interface StockFormProps {
   submitLabel?: string;
 }
 
-const DEFAULTS: StockFormInput = {
-  symbol: '',
-  name: '',
-  market: 'US',
-  currency: 'USD',
-  exchange: '',
-  sector: '',
-  industry: '',
-  isActive: true,
-};
-
 export function StockForm({ initial, submitLabel = 'Save stock' }: StockFormProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const values: StockFormInput = { ...DEFAULTS, ...initial };
+  const [symbol, setSymbol] = useState((initial?.symbol ?? '').toUpperCase());
+  const detected = detectMarketCurrency(symbol);
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
+    if (!symbol) {
+      setError('Symbol is required.');
+      return;
+    }
+    if (!detected) {
+      setError(`Cannot determine market for "${symbol}". Only US and HK symbols are supported.`);
+      return;
+    }
     const formData = new FormData(e.currentTarget);
     const input: StockFormInput = {
       ...(initial?.id ? { id: initial.id } : {}),
-      symbol: String(formData.get('symbol') ?? '').trim().toUpperCase(),
+      symbol,
       name: String(formData.get('name') ?? '').trim(),
-      market: formData.get('market') === 'HK' ? 'HK' : 'US',
-      currency: String(formData.get('currency') ?? 'USD').trim().toUpperCase(),
+      // Server re-detects and overwrites — we send placeholders so the
+      // Zod schema passes; the canonical values come from the symbol.
+      market: detected.market,
+      currency: detected.currency,
       exchange: formData.get('exchange') ? String(formData.get('exchange')) : null,
       sector: formData.get('sector') ? String(formData.get('sector')) : null,
       industry: formData.get('industry') ? String(formData.get('industry')) : null,
@@ -64,13 +65,52 @@ export function StockForm({ initial, submitLabel = 'Save stock' }: StockFormProp
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field id="symbol" label="Symbol" required defaultValue={values.symbol} placeholder="AAPL or 0700.HK" />
-        <Field id="name" label="Company name" required defaultValue={values.name} />
-        <SelectField id="market" label="Market" defaultValue={values.market} options={['US', 'HK']} />
-        <Field id="currency" label="Currency" defaultValue={values.currency} placeholder="USD / HKD" />
-        <Field id="exchange" label="Exchange" defaultValue={values.exchange ?? ''} placeholder="NASDAQ / HKEX" />
-        <Field id="sector" label="Sector" defaultValue={values.sector ?? ''} placeholder="Technology" />
-        <Field id="industry" label="Industry" defaultValue={values.industry ?? ''} placeholder="Semiconductors" />
+        <div className="space-y-1.5">
+          <Label htmlFor="symbol">
+            Symbol<span className="ml-1 text-negative">*</span>
+          </Label>
+          <Input
+            id="symbol"
+            name="symbol"
+            required
+            value={symbol}
+            onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+            placeholder="AAPL or 0700.HK"
+          />
+          {detected ? (
+            <p className="text-2xs text-fg-muted">
+              → <span className="font-medium text-fg">{detected.market}</span> ·{' '}
+              <span className="font-medium text-fg">{detected.currency}</span>{' '}
+              <span className="text-fg-subtle">(auto-detected)</span>
+            </p>
+          ) : (
+            <p className="text-2xs text-amber">
+              No matching market — only US and HK symbols are supported.
+            </p>
+          )}
+        </div>
+        <Field id="name" label="Company name" required defaultValue={initial?.name ?? ''} />
+        <Field
+          id="exchange"
+          label="Exchange"
+          optional
+          defaultValue={initial?.exchange ?? ''}
+          placeholder="NASDAQ / HKEX (optional)"
+        />
+        <Field
+          id="sector"
+          label="Sector"
+          optional
+          defaultValue={initial?.sector ?? ''}
+          placeholder="Technology (optional)"
+        />
+        <Field
+          id="industry"
+          label="Industry"
+          optional
+          defaultValue={initial?.industry ?? ''}
+          placeholder="Semiconductors (optional)"
+        />
       </div>
 
       <div className="flex items-center gap-2">
@@ -78,7 +118,7 @@ export function StockForm({ initial, submitLabel = 'Save stock' }: StockFormProp
           id="isActive"
           name="isActive"
           type="checkbox"
-          defaultChecked={values.isActive}
+          defaultChecked={initial?.isActive ?? true}
           className="h-4 w-4 rounded border-border bg-bg-elevated text-accent focus:ring-accent"
         />
         <Label htmlFor="isActive" className="cursor-pointer">
@@ -87,7 +127,7 @@ export function StockForm({ initial, submitLabel = 'Save stock' }: StockFormProp
       </div>
 
       <div className="flex gap-2">
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" disabled={pending || !detected}>
           {pending ? 'Saving…' : submitLabel}
         </Button>
         <Button type="button" variant="ghost" onClick={() => router.back()}>
@@ -102,12 +142,14 @@ function Field({
   id,
   label,
   required,
+  optional,
   defaultValue,
   placeholder,
 }: {
   id: string;
   label: string;
   required?: boolean;
+  optional?: boolean;
   defaultValue?: string;
   placeholder?: string;
 }) {
@@ -116,40 +158,9 @@ function Field({
       <Label htmlFor={id}>
         {label}
         {required && <span className="ml-1 text-negative">*</span>}
+        {optional && <span className="ml-1 text-fg-subtle">(optional)</span>}
       </Label>
       <Input id={id} name={id} required={required} defaultValue={defaultValue} placeholder={placeholder} />
-    </div>
-  );
-}
-
-function SelectField({
-  id,
-  label,
-  defaultValue,
-  options,
-}: {
-  id: string;
-  label: string;
-  defaultValue?: string;
-  options: string[];
-}) {
-  return (
-    <div className="space-y-1.5">
-      <Label htmlFor={id}>{label}</Label>
-      <select
-        id={id}
-        name={id}
-        defaultValue={defaultValue}
-        className={cn(
-          'flex h-9 w-full rounded-md border border-border bg-bg-elevated px-3 py-1 text-sm text-fg shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
-        )}
-      >
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
-      </select>
     </div>
   );
 }
