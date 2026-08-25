@@ -33,6 +33,7 @@ export function StockForm({ initial, submitLabel = 'Save stock' }: StockFormProp
     setError(null);
     const formData = new FormData(e.currentTarget);
     const input: StockFormInput = {
+      ...(initial?.id ? { id: initial.id } : {}),
       symbol: String(formData.get('symbol') ?? '').trim().toUpperCase(),
       name: String(formData.get('name') ?? '').trim(),
       market: formData.get('market') === 'HK' ? 'HK' : 'US',

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { createAdminClient, isSupabaseWritable } from '@/lib/supabase/admin';
 
@@ -16,7 +17,11 @@ const StockSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
-export type StockFormInput = z.infer<typeof StockSchema>;
+export type StockFormInput = z.infer<typeof StockSchema> & {
+  /** Set by the edit form so the uniqueness check can exclude the row being
+   *  updated. Omitted for new-stock creation. */
+  id?: string;
+};
 
 export interface ActionResult {
   ok: boolean;
@@ -25,9 +30,39 @@ export interface ActionResult {
 }
 
 /**
+ * Return a set of `${symbol}|${market}` keys for rows that already exist.
+ * Used by both single and bulk writes to short-circuit duplicates before
+ * hitting the database. `excludeId` lets the edit path ignore its own row.
+ */
+async function findExistingConflicts(
+  client: SupabaseClient,
+  pairs: Array<{ symbol: string; market: string }>,
+  excludeId?: string,
+): Promise<Set<string>> {
+  if (pairs.length === 0) return new Set();
+  const symbols = Array.from(new Set(pairs.map((p) => p.symbol)));
+  const { data, error } = await client
+    .from('ey_stocks')
+    .select('id, symbol, market')
+    .in('symbol', symbols);
+  if (error) throw error;
+  const conflicts = new Set<string>();
+  for (const row of data ?? []) {
+    if (excludeId && row.id === excludeId) continue;
+    conflicts.add(`${row.symbol}|${row.market}`);
+  }
+  return conflicts;
+}
+
+/**
  * Create or update a stock. Server action called by the admin form.
- * Returns { ok:false, error } for validation failures so the form can
- * re-render with errors; on success returns { ok:true, id }.
+ * Returns { ok:false, error } for validation or uniqueness failures so the
+ * form can re-render with errors; on success returns { ok:true, id }.
+ *
+ * Uniqueness rule: (symbol, market) is the natural key. New stocks must not
+ * collide with an existing row; edits must not collide with a DIFFERENT row
+ * (so re-saving the same record still works). The check is a friendly
+ * pre-flight — the DB unique constraint catches any race.
  *
  * If Supabase isn't configured, the action is a no-op success so the
  * UI can be developed without a backend.
@@ -47,6 +82,20 @@ export async function saveStockAction(input: StockFormInput): Promise<ActionResu
 
   try {
     const supabase = createAdminClient();
+    const conflicts = await findExistingConflicts(
+      supabase,
+      [{ symbol: data.symbol, market: data.market }],
+      input.id,
+    );
+    if (conflicts.has(`${data.symbol}|${data.market}`)) {
+      return {
+        ok: false,
+        error: input.id
+          ? `Another stock already uses ${data.symbol} (${data.market}).`
+          : `Stock ${data.symbol} already exists in ${data.market}.`,
+      };
+    }
+
     const { data: row, error } = await supabase
       .from('ey_stocks')
       .upsert(
@@ -101,7 +150,7 @@ export interface BulkImportResult {
   ok: boolean;
   /** Number of rows successfully upserted (counted after dedupe). */
   upserted: number;
-  /** Number of rows dropped due to validation errors. */
+  /** Number of rows dropped due to validation errors or duplicates. */
   errors: BulkImportError[];
   /** Top-level error if the batch call itself failed. */
   error?: string;
@@ -114,6 +163,10 @@ const BATCH_LIMIT = 500;
  * doesn't sink the whole batch — the result reports both the upsert count and
  * per-row errors. Duplicates within the input (same symbol+market) keep the
  * LAST occurrence, matching typical spreadsheet-paste semantics.
+ *
+ * Uniqueness rule mirrors `saveStockAction`: any (symbol, market) that
+ * already exists in the database is reported as an error and skipped — the
+ * remaining rows are upserted.
  *
  * If Supabase isn't configured, this is a no-op success so the dev UI can
  * exercise the flow without a backend.
@@ -130,9 +183,9 @@ export async function bulkImportStocksAction(
     };
   }
 
-  // Validate + dedupe by (symbol, market). Last write wins.
+  // Phase 1: validate each row + dedupe within the batch (last write wins).
   const errors: BulkImportError[] = [];
-  const dedup = new Map<string, StockFormInput>();
+  const dedup = new Map<string, { row: StockFormInput; rowNumber: number }>();
   rows.forEach((raw, idx) => {
     const rowNumber = idx + 1;
     const parsed = StockSchema.safeParse(raw);
@@ -146,33 +199,64 @@ export async function bulkImportStocksAction(
     }
     const data = parsed.data;
     const key = `${data.symbol.toUpperCase()}|${data.market}`;
-    dedup.set(key, data);
+    dedup.set(key, { row: data, rowNumber });
   });
 
-  const validRows = Array.from(dedup.values());
-  if (validRows.length === 0) {
+  const validEntries = Array.from(dedup.values());
+
+  // Phase 2: short-circuit rows that already exist in the DB. If the lookup
+  // fails (e.g. transient network error) we fall through to the upsert and
+  // let the DB's unique constraint catch any actual duplicate.
+  let rowsToUpsert = validEntries;
+  if (isSupabaseWritable() && validEntries.length > 0) {
+    try {
+      const supabase = createAdminClient();
+      const conflicts = await findExistingConflicts(
+        supabase,
+        validEntries.map((e) => ({ symbol: e.row.symbol, market: e.row.market })),
+      );
+      rowsToUpsert = [];
+      for (const entry of validEntries) {
+        const key = `${entry.row.symbol}|${entry.row.market}`;
+        if (conflicts.has(key)) {
+          errors.push({
+            row: entry.rowNumber,
+            symbol: entry.row.symbol,
+            reason: `Duplicate of existing ${entry.row.symbol} (${entry.row.market})`,
+          });
+        } else {
+          rowsToUpsert.push(entry);
+        }
+      }
+    } catch (err) {
+      console.warn('[bulkImportStocksAction] conflict check failed:', err);
+    }
+  }
+
+  if (rowsToUpsert.length === 0) {
     return { ok: errors.length === 0, upserted: 0, errors };
   }
 
   if (!isSupabaseWritable()) {
     console.warn(
-      `[bulkImportStocksAction] Supabase not configured — skipping write of ${validRows.length} rows (dev only)`,
+      `[bulkImportStocksAction] Supabase not configured — skipping write of ${rowsToUpsert.length} rows (dev only)`,
     );
     revalidatePath('/stocks');
-    return { ok: errors.length === 0, upserted: validRows.length, errors };
+    return { ok: errors.length === 0, upserted: rowsToUpsert.length, errors };
   }
 
+  // Phase 3: batch upsert.
   try {
     const supabase = createAdminClient();
-    const payload = validRows.map((data) => ({
-      symbol: data.symbol,
-      name: data.name,
-      market: data.market,
-      currency: data.currency,
-      exchange: data.exchange ?? null,
-      sector: data.sector ?? null,
-      industry: data.industry ?? null,
-      is_active: data.isActive,
+    const payload = rowsToUpsert.map((e) => ({
+      symbol: e.row.symbol,
+      name: e.row.name,
+      market: e.row.market,
+      currency: e.row.currency,
+      exchange: e.row.exchange ?? null,
+      sector: e.row.sector ?? null,
+      industry: e.row.industry ?? null,
+      is_active: e.row.isActive,
     }));
     const { error } = await supabase
       .from('ey_stocks')
@@ -181,7 +265,7 @@ export async function bulkImportStocksAction(
       return { ok: false, upserted: 0, errors, error: error.message };
     }
     revalidatePath('/stocks');
-    return { ok: errors.length === 0, upserted: validRows.length, errors };
+    return { ok: errors.length === 0, upserted: rowsToUpsert.length, errors };
   } catch (err) {
     return {
       ok: false,

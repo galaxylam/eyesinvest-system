@@ -25,6 +25,7 @@ export default async function EditStockPage({ params }: EditStockPageProps) {
       </div>
       <StockForm
         initial={{
+          id: stock.id,
           symbol: stock.symbol,
           name: stock.name,
           market: stock.market as 'US' | 'HK',
