@@ -524,6 +524,27 @@ alter table public.ey_stock_analytics
 create index if not exists idx_ey_stock_analytics_squeeze_score
   on public.ey_stock_analytics (as_of_date desc, squeeze_score desc)
   where squeeze_score is not null;
+
+-- ============================================================================
+-- Phase 3+ symbol/market/currency invariant — see 0015_ey_stocks_symbol_market_match.sql
+--
+-- Forces `ey_stocks` rows to satisfy:
+--   *.HK  ⇒  market='HK', currency='HKD'
+--   else  ⇒  market='US', currency='USD'
+--
+-- Blocks any future direct-SQL insert that would silently bypass
+-- `detectMarketCurrency` and break the HK path in `sync-shorts`.
+-- ============================================================================
+
+alter table public.ey_stocks
+  add constraint ey_stocks_symbol_market_currency_match
+  check (
+    (right(symbol, 3) = '.HK'
+      and market = 'HK' and currency = 'HKD')
+    or
+    (right(symbol, 3) <> '.HK'
+      and market = 'US' and currency = 'USD')
+  );
 -- ============================================================================
 -- EyesInvest — Phase 1 seed data
 --
