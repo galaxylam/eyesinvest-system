@@ -65,7 +65,7 @@ export function MobileMenu({ links }: MobileMenuProps) {
         <div
           id="mobile-menu-panel"
           role="menu"
-          className="absolute right-0 top-full z-50 mt-2 w-56 rounded-md border border-border bg-bg-elevated p-1 shadow-lg"
+          className="absolute left-0 top-full z-50 mt-2 w-56 rounded-md border border-border bg-bg-elevated p-1 shadow-lg"
         >
           {links.map((link) => (
             <Link
