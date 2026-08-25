@@ -89,6 +89,109 @@ export async function deleteStockAction(id: string): Promise<ActionResult> {
   }
 }
 
+/** Per-row error returned by `bulkImportStocksAction`. Row numbers are 1-based
+ *  and refer to the input array position (after dropping empty lines). */
+export interface BulkImportError {
+  row: number;
+  symbol?: string;
+  reason: string;
+}
+
+export interface BulkImportResult {
+  ok: boolean;
+  /** Number of rows successfully upserted (counted after dedupe). */
+  upserted: number;
+  /** Number of rows dropped due to validation errors. */
+  errors: BulkImportError[];
+  /** Top-level error if the batch call itself failed. */
+  error?: string;
+}
+
+const BATCH_LIMIT = 500;
+
+/**
+ * Upsert many stocks at once. Rows are validated individually so one bad row
+ * doesn't sink the whole batch — the result reports both the upsert count and
+ * per-row errors. Duplicates within the input (same symbol+market) keep the
+ * LAST occurrence, matching typical spreadsheet-paste semantics.
+ *
+ * If Supabase isn't configured, this is a no-op success so the dev UI can
+ * exercise the flow without a backend.
+ */
+export async function bulkImportStocksAction(
+  rows: StockFormInput[],
+): Promise<BulkImportResult> {
+  if (rows.length > BATCH_LIMIT) {
+    return {
+      ok: false,
+      upserted: 0,
+      errors: [],
+      error: `Too many rows (${rows.length}). Limit is ${BATCH_LIMIT} per import.`,
+    };
+  }
+
+  // Validate + dedupe by (symbol, market). Last write wins.
+  const errors: BulkImportError[] = [];
+  const dedup = new Map<string, StockFormInput>();
+  rows.forEach((raw, idx) => {
+    const rowNumber = idx + 1;
+    const parsed = StockSchema.safeParse(raw);
+    if (!parsed.success) {
+      errors.push({
+        row: rowNumber,
+        symbol: typeof raw?.symbol === 'string' ? raw.symbol : undefined,
+        reason: parsed.error.issues[0]?.message ?? 'Invalid input',
+      });
+      return;
+    }
+    const data = parsed.data;
+    const key = `${data.symbol.toUpperCase()}|${data.market}`;
+    dedup.set(key, data);
+  });
+
+  const validRows = Array.from(dedup.values());
+  if (validRows.length === 0) {
+    return { ok: errors.length === 0, upserted: 0, errors };
+  }
+
+  if (!isSupabaseWritable()) {
+    console.warn(
+      `[bulkImportStocksAction] Supabase not configured — skipping write of ${validRows.length} rows (dev only)`,
+    );
+    revalidatePath('/stocks');
+    return { ok: errors.length === 0, upserted: validRows.length, errors };
+  }
+
+  try {
+    const supabase = createAdminClient();
+    const payload = validRows.map((data) => ({
+      symbol: data.symbol,
+      name: data.name,
+      market: data.market,
+      currency: data.currency,
+      exchange: data.exchange ?? null,
+      sector: data.sector ?? null,
+      industry: data.industry ?? null,
+      is_active: data.isActive,
+    }));
+    const { error } = await supabase
+      .from('ey_stocks')
+      .upsert(payload, { onConflict: 'symbol,market' });
+    if (error) {
+      return { ok: false, upserted: 0, errors, error: error.message };
+    }
+    revalidatePath('/stocks');
+    return { ok: errors.length === 0, upserted: validRows.length, errors };
+  } catch (err) {
+    return {
+      ok: false,
+      upserted: 0,
+      errors,
+      error: err instanceof Error ? err.message : 'Unknown error',
+    };
+  }
+}
+
 /**
  * Form action variant used by the new/edit pages — redirects on success.
  */

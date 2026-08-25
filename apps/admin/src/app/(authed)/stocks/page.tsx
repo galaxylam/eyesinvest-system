@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { listAdminStocks } from '@/lib/stocks/admin-queries';
+import { BulkImportButton } from '@/components/BulkImportButton';
 import { DataTable } from '@/components/DataTable';
 
 export default async function StocksPage() {
@@ -15,12 +16,15 @@ export default async function StocksPage() {
             <span className="text-fg-subtle">Source: {source === 'supabase' ? 'Supabase' : 'Mock (dev)'}</span>
           </p>
         </div>
-        <Link
-          href="/stocks/new"
-          className="inline-flex items-center rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-fg transition-colors hover:opacity-90"
-        >
-          + New stock
-        </Link>
+        <div className="flex items-center gap-2">
+          <BulkImportButton />
+          <Link
+            href="/stocks/new"
+            className="inline-flex items-center rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-fg transition-colors hover:opacity-90"
+          >
+            + New stock
+          </Link>
+        </div>
       </div>
 
       <DataTable rows={rows} />
