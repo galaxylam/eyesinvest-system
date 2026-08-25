@@ -99,18 +99,6 @@ export function getAllMockStocks(): StockSearchResult[] {
   return STOCKS.map(toSearchResult);
 }
 
-export function searchMockStocks(q: string, market?: Market): StockSearchResult[] {
-  const needle = q.trim().toLowerCase();
-  if (needle.length === 0) return [];
-  const pool = market ? STOCKS.filter((s) => s.market === market) : STOCKS;
-  const matches = pool.filter((s) => {
-    if (s.symbol.toLowerCase().includes(needle)) return true;
-    if (s.name.toLowerCase().includes(needle)) return true;
-    return s.aliases.some((a) => a.toLowerCase().includes(needle));
-  });
-  return matches.slice(0, 20).map(toSearchResult);
-}
-
 export function getMockStockDetail(symbol: string): StockDetail | null {
   const normalized = symbol.toUpperCase();
   const found = STOCKS.find((s) => s.symbol.toUpperCase() === normalized);

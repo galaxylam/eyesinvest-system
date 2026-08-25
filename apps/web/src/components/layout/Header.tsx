@@ -31,7 +31,6 @@ export async function Header({ locale }: HeaderProps) {
           <NavLink href={`/${locale}/dashboard`}>{t('dashboard')}</NavLink>
           <NavLink href={`/${locale}/watchlist`}>{t('watchlist')}</NavLink>
           <NavLink href={`/${locale}/screener`}>{t('screener')}</NavLink>
-          <NavLink href={`/${locale}/search`}>{t('search')}</NavLink>
           <NavLink href={`/${locale}/heatmap`}>{t('heatmap')}</NavLink>
           <NavLink href={`/${locale}/rankings`}>{t('rankings')}</NavLink>
           <NavLink href={`/${locale}/news`}>{t('news')}</NavLink>

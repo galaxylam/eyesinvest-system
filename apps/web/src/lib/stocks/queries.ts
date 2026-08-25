@@ -32,7 +32,6 @@ import {
   getMockVolumeEfficiency,
   getMockVolumeSeries,
   getTopMockMovers,
-  searchMockStocks,
   type MockMoverRow,
 } from './mock-data';
 import type {
@@ -103,32 +102,6 @@ async function withFallback<T>(
     console.error('[queries] Supabase failed, using mock fallback:', err);
     return { data: fallback(), source: 'mock' };
   }
-}
-
-export async function searchStocks(
-  q: string,
-  opts: { market?: Market; limit?: number } = {},
-): Promise<QueryResult<StockSearchResult[]>> {
-  return withFallback(
-    async (supabase) => {
-      const { limit = 20 } = opts;
-      let query = supabase
-        .from('ey_stocks')
-        .select('id, symbol, name, market, currency, sector, industry')
-        .eq('is_active', true)
-        .order('symbol', { ascending: true })
-        .limit(limit);
-      if (opts.market) query = query.eq('market', opts.market);
-      if (q.trim().length > 0) {
-        const safe = q.replace(/[%_]/g, '\\$&');
-        query = query.or(`symbol.ilike.%${safe}%,name.ilike.%${safe}%`);
-      }
-      const { data, error } = await query;
-      if (error) throw error;
-      return (data ?? []) as unknown as StockSearchResult[];
-    },
-    () => searchMockStocks(q, opts.market).slice(0, opts.limit ?? 20),
-  );
 }
 
 export async function getStockDetail(symbol: string): Promise<QueryResult<StockDetail | null>> {

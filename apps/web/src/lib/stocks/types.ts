@@ -327,9 +327,9 @@ export interface ScreenerRow {
  *  the volume, >0.5 = up-bars dominated, <0.5 = down-bars dominated). */
 export interface GreenShareFilter {
   direction: 'green' | 'red';
-  /** 0.55 = share ≥ 55%, 0.60 = ≥ 60%, 0.65 = ≥ 65%. The 'red' direction
-   *  is implemented as `share ≤ 1 − threshold` (0.35, 0.40, 0.45). */
-  threshold: 0.55 | 0.6 | 0.65;
+  /** 0.10 = share ≥ 10%, 0.20 = ≥ 20%, ..., 0.70 = ≥ 70%. The 'red'
+   *  direction is implemented as `share ≤ 1 − threshold`. */
+  threshold: 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | 0.7;
 }
 
 /** Direction + number of consecutive periods for the short-interest trend

@@ -276,17 +276,25 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
             return;
           }
           const direction = v[0] === 'g' ? 'green' : 'red';
-          const threshold = Number(v.slice(1)) as 0.55 | 0.6 | 0.65;
+          const threshold = Number(v.slice(1)) as 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | 0.7;
           apply({ ...current, greenShare: { direction, threshold } });
         }}
         options={[
           { value: '', label: t('filter.any') },
-          { value: 'g0.55', label: t('filter.greenGE55') },
+          { value: 'g0.1', label: t('filter.greenGE10') },
+          { value: 'g0.2', label: t('filter.greenGE20') },
+          { value: 'g0.3', label: t('filter.greenGE30') },
+          { value: 'g0.4', label: t('filter.greenGE40') },
+          { value: 'g0.5', label: t('filter.greenGE50') },
           { value: 'g0.6', label: t('filter.greenGE60') },
-          { value: 'g0.65', label: t('filter.greenGE65') },
-          { value: 'r0.55', label: t('filter.redGE55') },
+          { value: 'g0.7', label: t('filter.greenGE70') },
+          { value: 'r0.1', label: t('filter.redGE10') },
+          { value: 'r0.2', label: t('filter.redGE20') },
+          { value: 'r0.3', label: t('filter.redGE30') },
+          { value: 'r0.4', label: t('filter.redGE40') },
+          { value: 'r0.5', label: t('filter.redGE50') },
           { value: 'r0.6', label: t('filter.redGE60') },
-          { value: 'r0.65', label: t('filter.redGE65') },
+          { value: 'r0.7', label: t('filter.redGE70') },
         ]}
       />
       <SelectField

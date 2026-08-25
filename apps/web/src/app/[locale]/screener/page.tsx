@@ -29,7 +29,7 @@ interface ScreenerPageProps {
     ma5?: string;
     /** MA20 trend: 'up' | 'down' */
     ma20?: string;
-    /** Green-share threshold: 'g0.55' / 'g0.6' / 'g0.65' / 'r0.55' / 'r0.6' / 'r0.65' */
+    /** Green-share threshold: 'g0.1'..'g0.7' / 'r0.1'..'r0.7' (step 0.1). */
     gs?: string;
     /** Short-interest trend: 'u1' / 'u2' / 'u3' / 'd1' / 'd2' / 'd3' */
     sit?: string;
@@ -87,14 +87,14 @@ function parseFilters(sp: Awaited<ScreenerPageProps['searchParams']>): ScreenerF
   }
   if (sp.ma5 === 'up' || sp.ma5 === 'down') f.ma5Trend = sp.ma5;
   if (sp.ma20 === 'up' || sp.ma20 === 'down') f.ma20Trend = sp.ma20;
-  // green-share: encoding is e.g. 'g0.55' or 'r0.6'. Direction is the first
-  // char; share threshold (0..1) is the rest. Anything malformed is silently
-  // ignored so a hand-edited URL doesn't 500 the page.
+  // green-share: encoding is e.g. 'g0.6' or 'r0.3'. Direction is the first
+  // char; share threshold (0..1, step 0.1) is the rest. Anything malformed is
+  // silently ignored so a hand-edited URL doesn't 500 the page.
   if (sp.gs) {
     const c = sp.gs[0];
     const n = Number(sp.gs.slice(1));
-    if ((c === 'g' || c === 'r') && (n === 0.55 || n === 0.6 || n === 0.65)) {
-      f.greenShare = { direction: c === 'g' ? 'green' : 'red', threshold: n as 0.55 | 0.6 | 0.65 };
+    if ((c === 'g' || c === 'r') && (n === 0.1 || n === 0.2 || n === 0.3 || n === 0.4 || n === 0.5 || n === 0.6 || n === 0.7)) {
+      f.greenShare = { direction: c === 'g' ? 'green' : 'red', threshold: n as 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | 0.7 };
     }
   }
   if (sp.sit) {

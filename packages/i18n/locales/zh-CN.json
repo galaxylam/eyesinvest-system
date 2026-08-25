@@ -24,7 +24,6 @@
   "nav": {
     "dashboard": "仪表板",
     "watchlist": "自选股",
-    "search": "搜索",
     "screener": "筛选器",
     "heatmap": "热力图",
     "rankings": "排行榜",
@@ -127,13 +126,6 @@
       "cta": "浏览股票"
     }
   },
-  "search": {
-    "title": "搜索股票",
-    "subtitle": "可使用股票代号、公司名称或别名(支持繁体/简体中文)进行搜索。",
-    "placeholder": "搜索 AAPL、腾讯、Tencent…",
-    "minChars": "请输入至少 2 个字符以进行搜索。",
-    "noResults": "找不到符合「{query}」的股票。"
-  },
   "screener": {
     "title": "股票筛选器",
     "subtitle": "按市场、行业、市值、估值、股息率与动能筛选并排序追踪名单。",
@@ -171,12 +163,20 @@
       "maUp": "向上",
       "maDown": "向下",
       "greenShare": "1 个月涨日量比",
-      "greenGE55": "涨 ≥ 55%",
+      "greenGE10": "涨 ≥ 10%",
+      "greenGE20": "涨 ≥ 20%",
+      "greenGE30": "涨 ≥ 30%",
+      "greenGE40": "涨 ≥ 40%",
+      "greenGE50": "涨 ≥ 50%",
       "greenGE60": "涨 ≥ 60%",
-      "greenGE65": "涨 ≥ 65%",
-      "redGE55": "跌 ≥ 55%",
+      "greenGE70": "涨 ≥ 70%",
+      "redGE10": "跌 ≥ 10%",
+      "redGE20": "跌 ≥ 20%",
+      "redGE30": "跌 ≥ 30%",
+      "redGE40": "跌 ≥ 40%",
+      "redGE50": "跌 ≥ 50%",
       "redGE60": "跌 ≥ 60%",
-      "redGE65": "跌 ≥ 65%",
+      "redGE70": "跌 ≥ 70%",
       "shortInterestTrend": "放空持仓趋势",
       "siInc1": "1 期增加",
       "siInc2": "2 期增加",
