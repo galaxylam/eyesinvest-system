@@ -220,7 +220,12 @@ def sync_shorts() -> None:
     configure_logging(cfg.log_level)
     client = make_client(cfg.supabase_url, cfg.supabase_service_role_key)
     stocks = fetch_active_stocks(client)
-    us_stocks = [s for s in stocks if s.market == "US"]
+    # Defense-in-depth: even if `ey_stocks.market` is wrong for a row
+    # (e.g. a 1024.HK mistakenly inserted as market='US'), never let an HK
+    # symbol reach FINRA — it only covers US tickers, so the query gets a
+    # persistent empty body and wastes a round-trip. The HK path picks up
+    # the same ticker once its `market` is corrected to 'HK'.
+    us_stocks = [s for s in stocks if s.market == "US" and not s.symbol.upper().endswith(".HK")]
     hk_stocks = [s for s in stocks if s.market == "HK"]
     us_symbol_map = {s.symbol: s.id for s in us_stocks}
     hk_code_to_id = {
@@ -230,6 +235,11 @@ def sync_shorts() -> None:
         )
         if code is not None
     }
+    if dropped := [s.symbol for s in stocks if s.market == "US" and s.symbol.upper().endswith(".HK")]:
+        logger.warning(
+            f"sync-shorts: {len(dropped)} HK-looking symbol(s) stored with "
+            f"market='US' are excluded from the US path: {dropped}"
+        )
     logger.info(
         f"syncing short-selling for {len(us_stocks)} US + "
         f"{len(hk_stocks)} HK stocks ({len(hk_code_to_id)} HK codes known)"

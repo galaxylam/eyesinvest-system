@@ -35,6 +35,17 @@ _TIMEOUT_SECONDS = 60
 _REQUEST_THROTTLE_SECONDS = 0.5  # stay well under the 1,200 req/min/IP cap
 
 
+def _is_hk_symbol(symbol: str) -> bool:
+    """True for HK-listed tickers (e.g. ``0700.HK``, ``1024.HK``).
+
+    FINRA only covers US securities — querying for an HK symbol gets a
+    persistent empty body, which costs a wasted round-trip and noisy log
+    lines on every ``sync-shorts`` run. Caller paths should skip these
+    before they ever reach the network.
+    """
+    return symbol.strip().upper().endswith(".HK")
+
+
 class FinraApiError(RuntimeError):
     """Raised when the FINRA API returns a non-2xx response or auth fails."""
 
@@ -226,6 +237,15 @@ def fetch_reg_sho_daily(
     end = end_date.isoformat()
 
     for i, (symbol, stock_id) in enumerate(symbol_map.items(), start=1):
+        # FINRA only carries US tickers. If a HK symbol leaks into the US
+        # symbol_map (e.g. via a mis-stored `market='US'` row), FINRA
+        # returns a persistent empty body — skip up front to avoid a
+        # pointless round-trip + noisy warning per ticker.
+        if _is_hk_symbol(symbol):
+            logger.warning(
+                f"regShoDaily: skipping {symbol} — FINRA only covers US tickers"
+            )
+            continue
         try:
             payload = {
                 "fields": [
@@ -303,6 +323,14 @@ def fetch_consolidated_short_interest(
     """
     rows: list[ShortInterestRow] = []
     for i, (symbol, stock_id) in enumerate(symbol_map.items(), start=1):
+        # Same defense as in `fetch_reg_sho_daily`: FINRA is US-only. Skip
+        # any HK-looking symbol so a stray mis-stored row can't generate
+        # an empty-body warning on every sync-shorts run.
+        if _is_hk_symbol(symbol):
+            logger.warning(
+                f"consolidatedShortInterest: skipping {symbol} — FINRA only covers US tickers"
+            )
+            continue
         try:
             payload = {
                 "fields": [
