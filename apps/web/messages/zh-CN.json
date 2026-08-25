@@ -32,6 +32,9 @@
     "stocks": "股票",
     "settings": "设置"
   },
+  "search": {
+    "placeholder": "搜索股票代号(AAPL、0700.HK…)"
+  },
   "home": {
     "phaseBadge": "第一阶段 — 基础建设",
     "heroTitle": "美股与港股专业投资分析平台",

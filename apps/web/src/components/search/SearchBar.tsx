@@ -30,7 +30,7 @@ export function SearchBar({ locale }: SearchBarProps) {
     e.preventDefault();
     const q = value.trim();
     if (q.length < 1) return;
-    router.push(`/${locale}/search?q=${encodeURIComponent(q)}`);
+    router.push(`/${locale}/stocks/${encodeURIComponent(q.toUpperCase())}`);
   }
 
   return (

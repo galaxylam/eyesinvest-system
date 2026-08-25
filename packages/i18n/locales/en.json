@@ -32,6 +32,9 @@
     "stocks": "Stocks",
     "settings": "Settings"
   },
+  "search": {
+    "placeholder": "Search ticker (AAPL, 0700.HK…)"
+  },
   "home": {
     "phaseBadge": "Phase 1 — Foundation",
     "heroTitle": "Professional investment intelligence for US & Hong Kong equities",

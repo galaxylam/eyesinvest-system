@@ -1,6 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { LangSwitcher } from './LangSwitcher';
+import { MobileMenu } from './MobileMenu';
 import { ThemeToggle } from './ThemeToggle';
 import { SearchBar } from '@/components/search/SearchBar';
 
@@ -44,6 +45,17 @@ export async function Header({ locale }: HeaderProps) {
 
         {/* Right-side controls */}
         <div className="flex items-center gap-2">
+          <MobileMenu
+            links={[
+              { href: `/${locale}/dashboard`, label: t('dashboard') },
+              { href: `/${locale}/watchlist`, label: t('watchlist') },
+              { href: `/${locale}/screener`, label: t('screener') },
+              { href: `/${locale}/heatmap`, label: t('heatmap') },
+              { href: `/${locale}/rankings`, label: t('rankings') },
+              { href: `/${locale}/news`, label: t('news') },
+              { href: `/${locale}/ai`, label: t('ai') },
+            ]}
+          />
           <LangSwitcher />
           <ThemeToggle />
         </div>
