@@ -11,23 +11,24 @@ interface HeaderProps {
 
 export async function Header({ locale }: HeaderProps) {
   const t = await getTranslations('nav');
-  const tCommon = await getTranslations('common');
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-bg/85 backdrop-blur supports-[backdrop-filter]:bg-bg/70">
-      <div className="mx-auto flex h-14 max-w-screen-2xl items-center gap-4 px-4 sm:px-6">
-        {/* Brand */}
-        <Link
-          href={`/${locale}`}
-          className="focus-ring flex items-center gap-2 rounded-md px-1 py-1 text-fg"
-        >
-          <BrandMark />
-          <span className="text-sm font-semibold tracking-tight">
-            {tCommon('brand')}
-          </span>
-        </Link>
+      <div className="mx-auto flex h-14 max-w-screen-2xl items-center gap-3 px-4 sm:px-6">
+        {/* Mobile menu (hamburger) — leftmost on small screens, hidden on md+ */}
+        <MobileMenu
+          links={[
+            { href: `/${locale}/dashboard`, label: t('dashboard') },
+            { href: `/${locale}/watchlist`, label: t('watchlist') },
+            { href: `/${locale}/screener`, label: t('screener') },
+            { href: `/${locale}/heatmap`, label: t('heatmap') },
+            { href: `/${locale}/rankings`, label: t('rankings') },
+            { href: `/${locale}/news`, label: t('news') },
+            { href: `/${locale}/ai`, label: t('ai') },
+          ]}
+        />
 
-        {/* Primary nav */}
+        {/* Primary nav (desktop only) */}
         <nav className="hidden items-center gap-1 text-sm text-fg-muted md:flex">
           <NavLink href={`/${locale}/dashboard`}>{t('dashboard')}</NavLink>
           <NavLink href={`/${locale}/watchlist`}>{t('watchlist')}</NavLink>
@@ -39,23 +40,12 @@ export async function Header({ locale }: HeaderProps) {
         </nav>
 
         {/* Search */}
-        <div className="flex-1 max-w-md">
+        <div className="flex-1 sm:max-w-2xl">
           <SearchBar locale={locale} />
         </div>
 
         {/* Right-side controls */}
         <div className="flex items-center gap-2">
-          <MobileMenu
-            links={[
-              { href: `/${locale}/dashboard`, label: t('dashboard') },
-              { href: `/${locale}/watchlist`, label: t('watchlist') },
-              { href: `/${locale}/screener`, label: t('screener') },
-              { href: `/${locale}/heatmap`, label: t('heatmap') },
-              { href: `/${locale}/rankings`, label: t('rankings') },
-              { href: `/${locale}/news`, label: t('news') },
-              { href: `/${locale}/ai`, label: t('ai') },
-            ]}
-          />
           <LangSwitcher />
           <ThemeToggle />
         </div>
@@ -72,27 +62,5 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
     >
       {children}
     </Link>
-  );
-}
-
-function BrandMark() {
-  return (
-    <svg
-      viewBox="0 0 32 32"
-      className="h-6 w-6 text-accent"
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-    >
-      <path
-        d="M3 22 L10 14 L15 18 L22 9 L29 14"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx="22" cy="9" r="2" fill="currentColor" stroke="none" />
-      <circle cx="10" cy="14" r="1.5" fill="currentColor" stroke="none" />
-      <circle cx="3" cy="22" r="1.5" fill="currentColor" stroke="none" />
-    </svg>
   );
 }
