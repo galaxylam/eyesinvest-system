@@ -98,7 +98,14 @@ class FinraClient:
     # ----- HTTP ---------------------------------------------------------------
 
     def _post(self, dataset: str, payload: dict[str, Any]) -> Any:
-        """POST against `/data/group/otcMarket/name/{dataset}`. Auto-retries on 401."""
+        """POST against `/data/group/otcMarket/name/{dataset}`. Auto-retries on 401.
+
+        FINRA occasionally returns a 2xx with an empty or non-JSON body
+        (transient upstream hiccup). We treat that as a retryable error —
+        one backoff + retry, then raise ``FinraApiError`` so the per-ticker
+        caller can skip just the failing symbol instead of taking down the
+        whole ``sync-shorts`` run.
+        """
         body = json.dumps(payload).encode("utf-8")
         url = f"{_API_BASE}/{dataset}"
         last_err: Exception | None = None
@@ -115,9 +122,9 @@ class FinraClient:
             )
             try:
                 with urllib.request.urlopen(req, timeout=_TIMEOUT_SECONDS) as resp:
-                    return json.loads(resp.read())
+                    raw = resp.read()
             except urllib.error.HTTPError as exc:
-                detail = exc.read().decode()[:200]
+                detail = exc.read().decode(errors="replace")[:200]
                 if exc.code == 401 and attempt == 1:
                     logger.info("FINRA 401 — refreshing OAuth token and retrying")
                     self._token = None
@@ -129,6 +136,34 @@ class FinraClient:
                 last_err = exc
                 logger.warning(f"FINRA POST {dataset}: {exc}")
                 break
+
+            # 2xx — parse the body. Empty / non-JSON responses are treated as
+            # transient: retry once before giving up.
+            if not raw:
+                logger.warning(
+                    f"FINRA POST {dataset}: empty body (attempt {attempt}/2)"
+                )
+                if attempt == 1:
+                    time.sleep(_REQUEST_THROTTLE_SECONDS)
+                    continue
+                raise FinraApiError(
+                    f"FINRA POST {dataset}: empty body after retry"
+                )
+            try:
+                return json.loads(raw)
+            except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                snippet = raw[:200].decode(errors="replace")
+                logger.warning(
+                    f"FINRA POST {dataset}: non-JSON body (attempt {attempt}/2): "
+                    f"{snippet!r}"
+                )
+                if attempt == 1:
+                    time.sleep(_REQUEST_THROTTLE_SECONDS)
+                    continue
+                raise FinraApiError(
+                    f"FINRA POST {dataset}: non-JSON body after retry: {snippet!r}"
+                ) from exc
+
         raise FinraApiError(f"FINRA POST {dataset}: network error: {last_err}")
 
 
