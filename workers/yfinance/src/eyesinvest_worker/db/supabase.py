@@ -22,6 +22,17 @@ from eyesinvest_worker.models import (
 )
 
 
+# Upper bound (absolute) of a Postgres `numeric(p, s)` column: 10^s − 1
+# divided by 10^s. ey_short_interest.{days_to_cover, change_pct} are
+# numeric(10, 4) — any value with |x| > 999_999.9999 trips 22003.
+_NUMERIC_10_4_MAX_ABS = 999_999.9999
+
+
+def _is_finite_numeric(v: float) -> bool:
+    """Mirror of math.isfinite — local helper so the upsert code reads clean."""
+    return math.isfinite(v)
+
+
 def _sanitize_for_json(value: Any) -> Any:
     """Recursively replace NaN / ±Inf floats with None.
 
@@ -230,10 +241,39 @@ def upsert_short_sales(client: Client, rows: list[ShortSaleRow]) -> int:
 
 
 def upsert_short_interest(client: Client, rows: list[ShortInterestRow]) -> int:
-    """Upsert FINRA bi-weekly short-interest rows. PK conflict on (stock_id, settlement_date)."""
+    """Upsert FINRA bi-weekly short-interest rows. PK conflict on (stock_id, settlement_date).
+
+    `days_to_cover` and `change_pct` are stored as `numeric(10, 4)` which
+    caps the absolute value at 999_999.9999. FINRA occasionally returns
+    pathological values (e.g. an extreme `changePercent` after a stock
+    split) that overflow this range — without sanitisation the entire
+    500-row chunk fails with Postgres 22003. Clamp any offending field to
+    NULL so the rest of the row (notably `short_interest`) still lands.
+    """
     if not rows:
         return 0
-    payload = [_sanitize_for_json(r.model_dump(mode="json")) for r in rows]
+    cleaned: list[dict] = []
+    clamped_fields = 0
+    for r in rows:
+        d = r.model_dump(mode="json")
+        for k in ("days_to_cover", "change_pct"):
+            v = d.get(k)
+            if isinstance(v, (int, float)) and not _is_finite_numeric(v):
+                logger.warning(
+                    f"ey_short_interest.{k}={v!r} is not finite; setting NULL"
+                )
+                d[k] = None
+                clamped_fields += 1
+            elif isinstance(v, (int, float)) and abs(v) > _NUMERIC_10_4_MAX_ABS:
+                logger.warning(
+                    f"ey_short_interest.{k}={v} overflows numeric(10,4); setting NULL"
+                )
+                d[k] = None
+                clamped_fields += 1
+        cleaned.append(d)
+    if clamped_fields:
+        logger.info(f"ey_short_interest: clamped {clamped_fields} out-of-range field(s) to NULL")
+    payload = [_sanitize_for_json(d) for d in cleaned]
     written = 0
     for chunk in _chunks(payload, 500):
         resp = (
