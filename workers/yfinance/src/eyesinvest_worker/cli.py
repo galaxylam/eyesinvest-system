@@ -193,7 +193,18 @@ def sync_indexes() -> None:
 
 
 @main.command("sync-shorts")
-def sync_shorts() -> None:
+@click.option(
+    "--market",
+    type=click.Choice(["all", "us", "hk"], case_sensitive=False),
+    default="all",
+    show_default=True,
+    help=(
+        "Restrict the run to one market. 'all' (default) syncs US + HK; "
+        "'us' skips HKEX + SFC; 'hk' skips the entire FINRA path. "
+        "Useful when one side is slow / rate-limited / already up-to-date."
+    ),
+)
+def sync_shorts(market: str) -> None:
     """Pull short-selling data for every tracked stock across US + HK.
 
     US path:
@@ -245,34 +256,43 @@ def sync_shorts() -> None:
         f"{len(hk_stocks)} HK stocks ({len(hk_code_to_id)} HK codes known)"
     )
 
+    market_lower = market.lower()
+    skip_us = market_lower == "hk"
+    skip_hk = market_lower == "us"
+    if skip_us:
+        logger.info("--market=hk: skipping FINRA / US path entirely")
+    if skip_hk:
+        logger.info("--market=us: skipping HKEX + SFC / HK path entirely")
+
     use_api = bool(cfg.finra_api_client_id and cfg.finra_api_secret)
     us_sales: list = []
     us_interest: list = []
     days = cfg.short_sale_history_days
 
-    if use_api:
-        logger.info("US: using authenticated FINRA Developer API")
-        api = FinraClient(cfg.finra_api_client_id or "", cfg.finra_api_secret or "")
-        try:
-            us_sales = sync_short_sales_via_api(api, us_symbol_map, days=days)
-            us_interest = sync_short_interest_via_api(api, us_symbol_map)
-        except FinraApiError as exc:
-            logger.warning(
-                f"FINRA API path failed ({exc}); falling back to public CDN"
-            )
+    if not skip_us:
+        if use_api:
+            logger.info("US: using authenticated FINRA Developer API")
+            api = FinraClient(cfg.finra_api_client_id or "", cfg.finra_api_secret or "")
+            try:
+                us_sales = sync_short_sales_via_api(api, us_symbol_map, days=days)
+                us_interest = sync_short_interest_via_api(api, us_symbol_map)
+            except FinraApiError as exc:
+                logger.warning(
+                    f"FINRA API path failed ({exc}); falling back to public CDN"
+                )
+                us_sales = sync_short_sales(client, us_symbol_map, days=days)
+                time.sleep(cfg.price_throttle_seconds)
+                us_interest = sync_short_interest(client, us_symbol_map, lookback_days=60)
+        else:
+            logger.info("US: FINRA_API_CLIENT_ID/SECRET not set; using public CDN")
             us_sales = sync_short_sales(client, us_symbol_map, days=days)
             time.sleep(cfg.price_throttle_seconds)
             us_interest = sync_short_interest(client, us_symbol_map, lookback_days=60)
-    else:
-        logger.info("US: FINRA_API_CLIENT_ID/SECRET not set; using public CDN")
-        us_sales = sync_short_sales(client, us_symbol_map, days=days)
-        time.sleep(cfg.price_throttle_seconds)
-        us_interest = sync_short_interest(client, us_symbol_map, lookback_days=60)
 
     # --- HK ---
     hk_sales: list = []
     hk_interest: list = []
-    if hk_stocks:
+    if hk_stocks and not skip_hk:
         hk_sales = sync_hkex_short_sales_combined(client, hk_code_to_id)
         time.sleep(cfg.price_throttle_seconds)
         last_iso = fetch_last_settlement_date(client, market="HK")
