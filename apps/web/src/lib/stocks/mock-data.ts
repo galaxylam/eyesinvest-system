@@ -463,13 +463,14 @@ function computeIndicatorsAt(
     ma20Prior != null && ma20Prev != null ? +(ma20Prior - ma20Prev).toFixed(4) : null;
 
   // 1M green/red volume ratio — mean(volume on close>open bars) ÷
-  // mean(volume on close<open bars) over the trailing 30 trading days.
-  // Null until 30 days of history; null when no green OR no red bars in
+  // mean(volume on close<open bars) over the trailing 21 trading days
+  // (matches the live worker's `_green_red_volume_share_1m(window=21)`).
+  // Null until 21 days of history; null when no green OR no red bars in
   // the window (preserves the "no signal" state).
   let greenRedVolumeRatio1m: number | null = null;
   let greenRedVolumeShare1m: number | null = null;
-  if (idx >= 29) {
-    const window = bars.slice(idx - 29, idx + 1);
+  if (idx >= 20) {
+    const window = bars.slice(idx - 20, idx + 1);
     let greenSum = 0, greenCount = 0, redSum = 0, redCount = 0;
     for (const b of window) {
       if (b.close > b.open) { greenSum += b.volume; greenCount += 1; }
@@ -480,7 +481,15 @@ function computeIndicatorsAt(
     }
     const total = greenSum + redSum;
     if (total > 0) {
-      greenRedVolumeShare1m = +(greenSum / total).toFixed(4);
+      // Signed encoding mirroring the worker: positive when green
+      // dominant (magnitude = green share), negative when red dominant
+      // (magnitude = red share = 1 - green share). Sign carries the
+      // colour zone so the screener's filter never misclassifies a row.
+      const greenShare = greenSum / total;
+      greenRedVolumeShare1m =
+        greenShare >= 0.5
+          ? +greenShare.toFixed(4)
+          : -(+(1 - greenShare).toFixed(4));
     }
   }
 

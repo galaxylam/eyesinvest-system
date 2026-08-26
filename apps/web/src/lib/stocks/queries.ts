@@ -39,7 +39,7 @@ import type {
   CrowdedRatioPoint,
   CrowdedRegime,
   EfficiencyPoint,
-  GreenShareFilter,
+  GreenShareThreshold,
   RelativeStrength,
   ScreenerFilters,
   ShortInterestTrendFilter,
@@ -985,10 +985,10 @@ export async function getCrowdedRatio(
 
 // ============================================================================
 // Screener — denormalised one-row-per-stock for /screener. Joins client-side
-// (ey_stocks + ey_quote_snapshot + ey_stock_fundamentals + latest
-// ey_stock_analytics row) so we don't need a SQL view migration; the data
-// volume per market is small and Supabase's foreign keys + indexes keep the
-// four-table scan fast enough.
+// (ey_stocks — which carries `market_cap` / `pe_ratio` / `dividend_yield`
+// directly — + ey_quote_snapshot + latest ey_stock_analytics row) so we
+// don't need a SQL view migration; the data volume per market is small and
+// Supabase's foreign keys + indexes keep the three-table scan fast enough.
 // ============================================================================
 
 const SCREENER_LIMIT = 200;
@@ -1029,9 +1029,12 @@ export async function getScreenerRows(
   const sort: ScreenerSort = opts.sort ?? { column: 'marketCap', dir: 'desc' };
   return withFallback(
     async (supabase) => {
+      // Fundamentals live on `ey_stocks` (see migration 0003) — no separate
+      // `ey_stock_fundamentals` table. Including them in the initial SELECT
+      // saves a round-trip and avoids a silent fallback to mock data.
       const { data: stocks, error: stocksErr } = await supabase
         .from('ey_stocks')
-        .select('id, symbol, name, market, currency, sector')
+        .select('id, symbol, name, market, currency, sector, market_cap, pe_ratio, dividend_yield')
         .eq('is_active', true)
         .order('symbol', { ascending: true });
       if (stocksErr) throw stocksErr;
@@ -1042,16 +1045,16 @@ export async function getScreenerRows(
         market: Market;
         currency: string;
         sector: string | null;
+        market_cap: number | null;
+        pe_ratio: number | null;
+        dividend_yield: number | null;
       }>;
       if (stockRows.length === 0) return [];
 
       const ids = stockRows.map((s) => s.id);
-      const [quotesRes, fundRes, analyticsRes, interestRes] = await Promise.all([
+      const [quotesRes, analyticsRes, interestRes] = await Promise.all([
         supabase.from('ey_quote_snapshot').select(
           'stock_id, last_price, change, change_percent, volume',
-        ).in('stock_id', ids),
-        supabase.from('ey_stock_fundamentals').select(
-          'stock_id, market_cap, pe_ratio, dividend_yield',
         ).in('stock_id', ids),
         // One row per (stock, as_of_date); take the latest by as_of_date desc.
         // Phase 3+: `volume_efficiency` + `crowded_ratio` are persisted here by
@@ -1073,17 +1076,12 @@ export async function getScreenerRows(
         ).in('stock_id', ids).order('settlement_date', { ascending: false }).limit(ids.length * 5),
       ]);
       if (quotesRes.error) throw quotesRes.error;
-      if (fundRes.error) throw fundRes.error;
       if (analyticsRes.error) throw analyticsRes.error;
       if (interestRes.error) throw interestRes.error;
 
       const quoteMap = new Map<string, { last_price: number | null; change: number | null; change_percent: number | null; volume: number | null }>();
       for (const q of (quotesRes.data ?? []) as Array<{ stock_id: string; last_price: number | null; change: number | null; change_percent: number | null; volume: number | null }>) {
         quoteMap.set(q.stock_id, q);
-      }
-      const fundMap = new Map<string, { market_cap: number | null; pe_ratio: number | null; dividend_yield: number | null }>();
-      for (const f of (fundRes.data ?? []) as Array<{ stock_id: string; market_cap: number | null; pe_ratio: number | null; dividend_yield: number | null }>) {
-        fundMap.set(f.stock_id, f);
       }
       // Latest analytics row per stock_id.
       const analyticsMap = new Map<string, {
@@ -1115,7 +1113,6 @@ export async function getScreenerRows(
 
       const rows: ScreenerRow[] = stockRows.map((s) => {
         const q = quoteMap.get(s.id);
-        const f = fundMap.get(s.id);
         const a = analyticsMap.get(s.id);
         const interest = interestByStock.get(s.id) ?? [];
         const num = (v: unknown): number | null => (v == null ? null : Number(v));
@@ -1129,9 +1126,11 @@ export async function getScreenerRows(
           change: q ? num(q.change) : null,
           changePercent: q ? num(q.change_percent) : null,
           volume: q ? num(q.volume) : null,
-          marketCap: f ? num(f.market_cap) : null,
-          peRatio: f ? num(f.pe_ratio) : null,
-          dividendYield: f ? num(f.dividend_yield) : null,
+          // Fundamentals now come straight off the ey_stocks row we already
+          // pulled in (no separate ey_stock_fundamentals table to join).
+          marketCap: num(s.market_cap),
+          peRatio: num(s.pe_ratio),
+          dividendYield: num(s.dividend_yield),
           return1m: a ? num(a.return_1m) : null,
           return3m: a ? num(a.return_3m) : null,
           return6m: a ? num(a.return_6m) : null,
@@ -1449,14 +1448,15 @@ function applyScreenerFilters(
     if (f.ma5Trend === 'down' && (r.ma5Slope == null || r.ma5Slope >= 0)) return false;
     if (f.ma20Trend === 'up' && (r.ma20Slope == null || r.ma20Slope <= 0)) return false;
     if (f.ma20Trend === 'down' && (r.ma20Slope == null || r.ma20Slope >= 0)) return false;
-    if (f.greenShare) {
-      // Sum-based share: 0..1 fraction. 'green' means up-bars carried
-      // ≥ threshold of total volume; 'red' means up-bars carried
-      // ≤ (1 - threshold) of total volume (i.e. down-bars dominated).
+    if (f.greenShareThreshold != null) {
+      // Single signed threshold: positive → `share > threshold` (in green),
+      // negative → `share < threshold` (in red). The persisted share is
+      // also signed (positive = green dominant, negative = red dominant),
+      // so the comparison can't misclassify a row across the 0 boundary.
       const share = r.greenRedVolumeShare1m;
       if (share == null) return false;
-      if (f.greenShare.direction === 'green' && share < f.greenShare.threshold) return false;
-      if (f.greenShare.direction === 'red' && share > 1 - f.greenShare.threshold) return false;
+      if (f.greenShareThreshold > 0 && share <= f.greenShareThreshold) return false;
+      if (f.greenShareThreshold < 0 && share >= f.greenShareThreshold) return false;
     }
     if (f.shortInterestTrend && !matchesShortInterestTrend(
       interestBySymbol.get(r.symbol) ?? [],

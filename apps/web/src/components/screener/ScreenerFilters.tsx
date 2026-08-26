@@ -12,9 +12,9 @@ import type { ScreenerFilters } from '@/lib/stocks/queries';
 function encodeMaTrend(v: 'up' | 'down' | undefined): string | undefined {
   return v;
 }
-function encodeGs(v: ScreenerFilters['greenShare']): string | undefined {
-  if (!v) return undefined;
-  return `${v.direction[0]}${v.threshold}`;
+function encodeGs(v: ScreenerFilters['greenShareThreshold']): string | undefined {
+  if (v == null) return undefined;
+  return String(v);
 }
 function encodeSit(v: ScreenerFilters['shortInterestTrend']): string | undefined {
   if (!v) return undefined;
@@ -70,7 +70,7 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
     if (ma5) params.set('ma5', ma5); else params.delete('ma5');
     const ma20 = encodeMaTrend(next.ma20Trend);
     if (ma20) params.set('ma20', ma20); else params.delete('ma20');
-    const gs = encodeGs(next.greenShare);
+    const gs = encodeGs(next.greenShareThreshold);
     if (gs) params.set('gs', gs); else params.delete('gs');
     const sit = encodeSit(next.shortInterestTrend);
     if (sit) params.set('sit', sit); else params.delete('sit');
@@ -100,7 +100,7 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
     current.squeezeMin != null ||
     current.ma5Trend != null ||
     current.ma20Trend != null ||
-    current.greenShare != null ||
+    current.greenShareThreshold != null ||
     current.shortInterestTrend != null;
 
   return (
@@ -269,32 +269,29 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
       />
       <SelectField
         label={t('filter.greenShare')}
-        value={current.greenShare ? `${current.greenShare.direction[0]}${current.greenShare.threshold}` : ''}
+        value={current.greenShareThreshold != null ? String(current.greenShareThreshold) : ''}
         onChange={(v) => {
           if (v === '') {
-            apply({ ...current, greenShare: undefined });
+            apply({ ...current, greenShareThreshold: undefined });
             return;
           }
-          const direction = v[0] === 'g' ? 'green' : 'red';
-          const threshold = Number(v.slice(1)) as 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | 0.7;
-          apply({ ...current, greenShare: { direction, threshold } });
+          const n = Number(v) as 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | -0.1 | -0.2 | -0.3 | -0.4 | -0.5 | -0.6;
+          apply({ ...current, greenShareThreshold: n });
         }}
         options={[
           { value: '', label: t('filter.any') },
-          { value: 'g0.1', label: t('filter.greenGE10') },
-          { value: 'g0.2', label: t('filter.greenGE20') },
-          { value: 'g0.3', label: t('filter.greenGE30') },
-          { value: 'g0.4', label: t('filter.greenGE40') },
-          { value: 'g0.5', label: t('filter.greenGE50') },
-          { value: 'g0.6', label: t('filter.greenGE60') },
-          { value: 'g0.7', label: t('filter.greenGE70') },
-          { value: 'r0.1', label: t('filter.redGE10') },
-          { value: 'r0.2', label: t('filter.redGE20') },
-          { value: 'r0.3', label: t('filter.redGE30') },
-          { value: 'r0.4', label: t('filter.redGE40') },
-          { value: 'r0.5', label: t('filter.redGE50') },
-          { value: 'r0.6', label: t('filter.redGE60') },
-          { value: 'r0.7', label: t('filter.redGE70') },
+          { value: '0.6', label: t('filter.gsGT60') },
+          { value: '0.5', label: t('filter.gsGT50') },
+          { value: '0.4', label: t('filter.gsGT40') },
+          { value: '0.3', label: t('filter.gsGT30') },
+          { value: '0.2', label: t('filter.gsGT20') },
+          { value: '0.1', label: t('filter.gsGT10') },
+          { value: '-0.1', label: t('filter.gsLT10') },
+          { value: '-0.2', label: t('filter.gsLT20') },
+          { value: '-0.3', label: t('filter.gsLT30') },
+          { value: '-0.4', label: t('filter.gsLT40') },
+          { value: '-0.5', label: t('filter.gsLT50') },
+          { value: '-0.6', label: t('filter.gsLT60') },
         ]}
       />
       <SelectField

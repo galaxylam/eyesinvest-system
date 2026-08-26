@@ -87,14 +87,15 @@ function parseFilters(sp: Awaited<ScreenerPageProps['searchParams']>): ScreenerF
   }
   if (sp.ma5 === 'up' || sp.ma5 === 'down') f.ma5Trend = sp.ma5;
   if (sp.ma20 === 'up' || sp.ma20 === 'down') f.ma20Trend = sp.ma20;
-  // green-share: encoding is e.g. 'g0.6' or 'r0.3'. Direction is the first
-  // char; share threshold (0..1, step 0.1) is the rest. Anything malformed is
-  // silently ignored so a hand-edited URL doesn't 500 the page.
+  // 1M green/red share: encoding is a single signed number — `gs=0.5` means
+  // `>+50%` (in green, share > 0.5), `gs=-0.4` means `<-40%` (in red,
+  // share < -0.4). Anything outside the discrete allow-list is silently
+  // ignored so a hand-edited URL doesn't 500 the page.
   if (sp.gs) {
-    const c = sp.gs[0];
-    const n = Number(sp.gs.slice(1));
-    if ((c === 'g' || c === 'r') && (n === 0.1 || n === 0.2 || n === 0.3 || n === 0.4 || n === 0.5 || n === 0.6 || n === 0.7)) {
-      f.greenShare = { direction: c === 'g' ? 'green' : 'red', threshold: n as 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | 0.7 };
+    const n = Number(sp.gs);
+    const allowed = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, -0.1, -0.2, -0.3, -0.4, -0.5, -0.6];
+    if (Number.isFinite(n) && allowed.includes(n)) {
+      f.greenShareThreshold = n as 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | -0.1 | -0.2 | -0.3 | -0.4 | -0.5 | -0.6;
     }
   }
   if (sp.sit) {

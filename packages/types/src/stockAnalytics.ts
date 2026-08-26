@@ -34,9 +34,9 @@ export interface StockAnalytics {
   volumeEfficiency: number | null;
   /** MA5(volume) / MA30(volume) for the latest day. Null until both windows have enough history. */
   crowdedRatio: number | null;
-  /** Trailing 30-day mean(volume on close>open bars) ÷ mean(volume on close<open bars). Null until 30 days of history. >1 = green bars traded more, <1 = red bars traded more. Drives the screener "1M green ≥ N% higher than red" filter. */
+  /** Trailing 21-day mean(volume on close>open bars) ÷ mean(volume on close<open bars). Null until 21 days of history. >1 = green bars traded more, <1 = red bars traded more. Drives the screener "1M green ≥ N% higher than red" filter. */
   greenRedVolumeRatio1m: number | null;
-  /** Trailing 30-day sum(volume on close>open bars) ÷ (sum on close>open + sum on close<open). Null until 30 days of history. >0.5 = green bars carried more total volume. Sibling of `greenRedVolumeRatio1m` — share weights high-volume days more heavily. */
+  /** Trailing 21-day SIGNED green share in [-1, 1]. Positive when green dominant (magnitude = green share); negative when red dominant (magnitude = red share). Null until 21 days of history or when the window has no up-or-down signal. The sign carries the colour zone, the magnitude carries how decisively one side is winning — so the screener filter `> +50%` matches green share > 50% and `< -50%` matches red share > 50%. Window matches the stocks page Range picker "1M" so the two surfaces agree. */
   greenRedVolumeShare1m: number | null;
   /** Trailing 1m return minus the stock's market benchmark (SPX for US, HSI for HK). Percent points. Populated only on the most-recent row. */
   relativeStrength: number | null;

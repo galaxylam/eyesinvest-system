@@ -156,14 +156,30 @@ def _green_red_volume_ratio_1m(
 
 
 def _green_red_volume_share_1m(
-    open_: pd.Series, close: pd.Series, volume: pd.Series, window: int = 30,
+    open_: pd.Series, close: pd.Series, volume: pd.Series, window: int = 21,
 ) -> pd.Series:
-    """Trailing-30-day share of total volume on up-bars.
+    """Trailing-21-day signed share of total volume on the dominant side.
 
-        share = sum(volume on up-bars) / (sum on up-bars + sum on down-bars)
+        green_share = sum(volume on up-bars) / (sum on up + sum on down)
 
-    Range [0, 1]. NaN when the window has no up or no down bars (no
-    green-or-red signal to share against).
+    Signed so the sign carries the colour zone and the magnitude carries
+    how decisively one side is winning:
+
+      * share >= 0.5 (green dominant) → result = +green_share
+      * share  < 0.5 (red   dominant) → result = -red_share
+
+    Range [-1, 1] (was [0, 1]). NaN when the window has no up or no down
+    bars (no green-or-red signal to share against).
+
+    The sign is what the screener and stocks page compare to classify a
+    row as "in green" (value > 0) or "in red" (value < 0), and the
+    magnitude is the side that's winning — so "> +50%" means
+    green-share > 50% (strong green) and "< -50%" means red-share > 50%
+    (strong red). A row that's "in red" can never appear under a green
+    filter option (or vice-versa) regardless of the threshold.
+
+    Window matches the stocks page Range picker's "1M" definition
+    (RANGE_DAYS['1M'] = 21 trading days).
 
     Differs from `_green_red_volume_ratio_1m` (avg_green / avg_red) by
     weighting: a single huge-volume day moves `share` dramatically but
@@ -177,8 +193,15 @@ def _green_red_volume_share_1m(
     green_vol_sum = (volume * is_green).rolling(window, min_periods=window).sum()
     red_vol_sum = (volume * is_red).rolling(window, min_periods=window).sum()
     total = green_vol_sum + red_vol_sum
-    # total == 0 means the window was all dojis / missing volume — return NaN.
-    return green_vol_sum / total.replace(0, np.nan)
+    # total == 0 → window was all dojis / missing volume; NaN propagates.
+    green_share = green_vol_sum / total.replace(0, np.nan)
+    # Sign: +1 when green dominant, -1 when red dominant. Magnitude is the
+    # dominant side's share (green_share for green-dominant, 1-green_share
+    # for red-dominant). Boundary (== 0.5) counts as green-dominant to
+    # preserve the old `>= 0.5` classification.
+    sign = np.where(green_share >= 0.5, 1.0, -1.0)
+    magnitude = np.where(green_share >= 0.5, green_share, 1.0 - green_share)
+    return pd.Series(sign * magnitude, index=green_share.index)
 
 
 # ----- Phase 3+ squeeze-score helpers ----------------------------------------
@@ -390,7 +413,7 @@ def compute_analytics(
         open_series, close, volume_series, window=30,
     )
     df["green_red_volume_share_1m"] = _green_red_volume_share_1m(
-        open_series, close, volume_series, window=30,
+        open_series, close, volume_series, window=21,
     )
     df["relative_strength"] = pd.Series(np.nan, index=df.index, dtype="float64")
 

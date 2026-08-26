@@ -103,6 +103,13 @@ export function VolumeEfficiencyChart({
   // more heavily than the avg-based ratio. Computed inline from the
   // `windowed` series so the pill tracks the visible picker range, same
   // as `greenAvg` / `redAvg`. Dojis (change == 0) are excluded.
+  //
+  // Signed encoding mirrors the worker's `_green_red_volume_share_1m`:
+  // positive when green dominant (magnitude = green share), negative
+  // when red dominant (magnitude = red share). The 1M picker uses a
+  // 21-day window, so this value matches `signedShare1m` (and the
+  // screener) within floating-point noise — the displayed rounded
+  // percent is the same.
   const greenShare = useMemo(() => {
     let greenSum = 0;
     let redSum = 0;
@@ -113,7 +120,8 @@ export function VolumeEfficiencyChart({
     }
     const total = greenSum + redSum;
     if (total <= 0) return null;
-    return greenSum / total;
+    const gs = greenSum / total;
+    return gs >= 0.5 ? gs : -(1 - gs);
   }, [windowed]);
 
   useEffect(() => {
@@ -256,10 +264,18 @@ export function VolumeEfficiencyChart({
             <span className="text-2xs text-fg-subtle">{t('greenShare')}</span>
             <span
               className={`tabular font-mono text-xs font-medium ${
-                greenShare != null && greenShare >= 0.5 ? 'text-emerald-500' : 'text-rose-500'
+                greenShare == null
+                  ? 'text-fg-subtle'
+                  : greenShare > 0
+                    ? 'text-emerald-500'
+                    : greenShare < 0
+                      ? 'text-rose-500'
+                      : 'text-fg-subtle'
               }`}
             >
-              {greenShare != null ? `${(greenShare * 100).toFixed(1)}%` : '—'}
+              {greenShare != null
+                ? `${greenShare > 0 ? '+' : ''}${(greenShare * 100).toFixed(1)}%`
+                : '—'}
             </span>
           </div>
           <div className="hidden items-baseline gap-2 border-l border-border pl-4 sm:flex">

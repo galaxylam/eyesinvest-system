@@ -310,9 +310,9 @@ export interface ScreenerRow {
   ma5Slope: number | null;
   /** Signed delta of ma20 vs the prior trading day. Null on the first row of the series. */
   ma20Slope: number | null;
-  /** Trailing 30d mean(volume on up bars) ÷ mean(volume on down bars). Null until ≥30 days of history. >1 = up-bars traded more. */
+  /** Trailing 21d mean(volume on up bars) ÷ mean(volume on down bars). Null until ≥21 days of history. >1 = up-bars traded more. */
   greenRedVolumeRatio1m: number | null;
-  /** Trailing 30d sum(volume on up bars) ÷ (sum on up + sum on down bars). Null until ≥30 days of history. >0.5 = up-bars carried more volume. Sibling of `greenRedVolumeRatio1m` — share weights high-volume days more heavily. */
+  /** Trailing 21d SIGNED share in [-1, 1]. Positive when up-bars carried more total volume (magnitude = up-share); negative when down-bars carried more (magnitude = down-share). Null until ≥21 days of history or when the window has no up-or-down signal. Sibling of `greenRedVolumeRatio1m` — share weights high-volume days more heavily. Window matches the stocks page Range picker "1M" so the screener and the stocks-page pill agree. */
   greenRedVolumeShare1m: number | null;
   /** Trend of the latest bi-weekly short_interest. 'up' = latest > previous, 'down' = latest < previous, 'flat' = equal, null = insufficient history (<2 settlements). */
   shortInterestTrend: 'up' | 'down' | 'flat' | null;
@@ -321,16 +321,18 @@ export interface ScreenerRow {
   squeezeScore: number | null;
 }
 
-/** Direction + threshold for the 1M green-share volume filter. The share is
- *  `sum(volume on up bars) ÷ (sum on up bars + sum on down bars)` over the
- *  trailing 30 trading days — a 0..1 fraction (0.5 = up-bars carried half
- *  the volume, >0.5 = up-bars dominated, <0.5 = down-bars dominated). */
-export interface GreenShareFilter {
-  direction: 'green' | 'red';
-  /** 0.10 = share ≥ 10%, 0.20 = ≥ 20%, ..., 0.70 = ≥ 70%. The 'red'
-   *  direction is implemented as `share ≤ 1 − threshold`. */
-  threshold: 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | 0.7;
-}
+/** Signed share-threshold for the 1M green/red volume-share filter. The
+ *  share is `sum(volume on up bars) ÷ (sum on up bars + sum on down bars)`
+ *  over the trailing 21 trading days, encoded with a sign so the colour
+ *  zone is explicit (positive = green dominant, negative = red dominant;
+ *  magnitude is always the dominant side). The threshold carries the
+ *  same convention — the comparison itself decides which zone survives:
+ *    * positive threshold → keep rows with `share > threshold` (in green)
+ *    * negative threshold → keep rows with `share < threshold` (in red)
+ *  E.g. `0.5` ≈ `>+50%`, `-0.4` ≈ `<-40%`. */
+export type GreenShareThreshold =
+  | 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6
+  | -0.1 | -0.2 | -0.3 | -0.4 | -0.5 | -0.6;
 
 /** Direction + number of consecutive periods for the short-interest trend
  *  filter. One period = one bi-weekly settlement. */
@@ -364,9 +366,9 @@ export interface ScreenerFilters {
   ma5Trend?: 'up' | 'down';
   /** 'up' = latest ma20 > previous ma20, 'down' = latest ma20 ≤ previous ma20. */
   ma20Trend?: 'up' | 'down';
-  /** 1M green-share volume — green means up-bars carried ≥ threshold of total
-   *  volume in the trailing 30 trading days, red means down-bars did. */
-  greenShare?: GreenShareFilter;
+  /** 1M green/red share threshold — single signed number, see
+   *  `GreenShareThreshold` for semantics. */
+  greenShareThreshold?: GreenShareThreshold;
   /** Short-interest settlement trend over the last N consecutive periods. */
   shortInterestTrend?: ShortInterestTrendFilter;
   /** Lower bound on the 0..100 short-squeeze score (e.g. 60 = ≥Elevated).
