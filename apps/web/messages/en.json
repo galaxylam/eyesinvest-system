@@ -56,6 +56,13 @@
     "watchlistSubtitle": "Coming soon",
     "watchlistBody": "Add stocks to track relative strength, crowded ratio, and AI events side by side.",
     "findStocks": "Find stocks",
+    "marketFilter": {
+      "label": "Market",
+      "all": "All",
+      "us": "US Market",
+      "hk": "HK Market"
+    },
+    "watchlistEmptyForMarket": "No {{market}} stocks in your watchlist.",
     "topMovers": "Top movers",
     "topMoversSubtitle": "Largest absolute change today",
     "topMoversGainers": "Gainers",

@@ -7,31 +7,43 @@ import { SignedNumber } from '@/components/stocks/SignedNumber';
 import { formatSignedPercent } from '@/lib/format/quote';
 import { DashboardWatchlistCard } from '@/components/watchlist/DashboardWatchlistCard';
 import { SectorStrengthCard } from '@/components/dashboard/SectorStrengthCard';
+import {
+  DashboardMarketFilter,
+  type DashboardMarket,
+} from '@/components/dashboard/DashboardMarketFilter';
 
 interface DashboardProps {
   params: Promise<{ locale: string }>;
+  searchParams: Promise<{ market?: string }>;
 }
 
-export default async function DashboardPage({ params }: DashboardProps) {
+export default async function DashboardPage({ params, searchParams }: DashboardProps) {
   const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations('dashboard');
+  const sp = await searchParams;
+  // Strict allow-list so a hand-edited ?market=foo doesn't crash the cards.
+  const market: DashboardMarket =
+    sp.market === 'US' || sp.market === 'HK' ? sp.market : 'all';
 
   return (
     <div className="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6 lg:py-8">
-      <div className="mb-6 flex items-baseline justify-between">
+      <div className="mb-6 flex flex-wrap items-baseline justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight text-fg">
           {t('title')}
         </h1>
-        <p className="tabular text-xs text-fg-subtle">{t('lastUpdated')}: —</p>
+        <div className="flex items-center gap-3">
+          <DashboardMarketFilter current={market} />
+          <p className="tabular text-xs text-fg-subtle">{t('lastUpdated')}: —</p>
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Suspense fallback={<CardSkeleton title={t('watchlist')} />}>
-          <DashboardWatchlistCard />
+          <DashboardWatchlistCard market={market} />
         </Suspense>
         <Suspense fallback={<CardSkeleton title={t('topMovers')} />}>
-          <TopMoversCard locale={locale} />
+          <TopMoversCard locale={locale} market={market} />
         </Suspense>
         <Suspense fallback={<CardSkeleton title={t('marketSummary')} />}>
           <MarketSummaryCard />
@@ -61,9 +73,12 @@ function CardSkeleton({ title }: { title: string }) {
   );
 }
 
-async function TopMoversCard({ locale }: { locale: string }) {
+async function TopMoversCard({ locale, market }: { locale: string; market: DashboardMarket }) {
   const t = await getTranslations('dashboard');
-  const { data, source } = await getTopMoversWithChange({ limit: 5 });
+  const { data, source } = await getTopMoversWithChange({
+    limit: 5,
+    market: market === 'all' ? undefined : market,
+  });
   return (
     <Card
       title={t('topMovers')}

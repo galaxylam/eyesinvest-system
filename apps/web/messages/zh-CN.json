@@ -56,6 +56,13 @@
     "watchlistSubtitle": "即将推出",
     "watchlistBody": "添加股票以并列跟踪相对强弱、拥挤比率与 AI 事件。",
     "findStocks": "寻找股票",
+    "marketFilter": {
+      "label": "市场",
+      "all": "全部",
+      "us": "美股市场",
+      "hk": "港股市场"
+    },
+    "watchlistEmptyForMarket": "自选股中没有{{market}}股票。",
     "topMovers": "热门波动",
     "topMoversSubtitle": "今日最大涨跌幅",
     "topMoversGainers": "上涨",

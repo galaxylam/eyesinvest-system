@@ -1,26 +1,42 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useWatchlist } from '@/lib/watchlist/useWatchlist';
 import { formatPrice, formatSignedPercent } from '@/lib/format/quote';
 import { SignedNumber } from '@/components/stocks/SignedNumber';
 import type { WatchlistRowResponse } from '@/app/api/quotes/route';
+import type { DashboardMarket } from '@/components/dashboard/DashboardMarketFilter';
 
 const PREVIEW_LIMIT = 4;
 
+interface DashboardWatchlistCardProps {
+  /** 'all' = no filtering; 'US' / 'HK' = show only symbols whose `detail.market` matches. */
+  market: DashboardMarket;
+}
+
 /**
  * Compact watchlist preview for the dashboard. Shows the first
- * {@link PREVIEW_LIMIT} saved symbols with price + change%. Server + first
- * client render match (no rows visible) to avoid hydration mismatches.
+ * {@link PREVIEW_LIMIT} saved symbols (after market filter) with price +
+ * change%. Server + first client render match (no rows visible) to avoid
+ * hydration mismatches.
  */
-export function DashboardWatchlistCard() {
+export function DashboardWatchlistCard({ market }: DashboardWatchlistCardProps) {
   const t = useTranslations('dashboard');
   const tWatch = useTranslations('watchlist');
   const locale = useLocale();
   const { symbols, hydrated } = useWatchlist();
   const [rows, setRows] = useState<Record<string, WatchlistRowResponse>>({});
+
+  // Symbols filtered by market — the API quote details carry `market`, so
+  // we filter using the loaded detail rows (when available). Until the
+  // quote fetch resolves, fall back to passing through unfiltered so the
+  // user sees their saved list immediately.
+  const visibleSymbols = useMemo(() => {
+    if (market === 'all') return symbols;
+    return symbols.filter((sym) => rows[sym]?.detail?.market === market);
+  }, [symbols, rows, market]);
 
   useEffect(() => {
     if (!hydrated || symbols.length === 0) {
@@ -72,13 +88,36 @@ export function DashboardWatchlistCard() {
     );
   }
 
-  const visible = symbols.slice(0, PREVIEW_LIMIT);
-  const overflow = symbols.length - visible.length;
+  // No symbols in the selected market — show a market-specific empty state
+  // rather than the generic "no saved stocks" message.
+  if (visibleSymbols.length === 0) {
+    const marketLabel = market === 'US'
+      ? t('marketFilter.us')
+      : market === 'HK'
+        ? t('marketFilter.hk')
+        : '';
+    return (
+      <Card title={t('watchlist')} subtitle={t('watchlistSubtitle')}>
+        <p className="text-sm text-fg-muted">
+          {t('watchlistEmptyForMarket', { market: marketLabel })}
+        </p>
+        <Link
+          href={`/${locale}/search`}
+          className="mt-3 inline-flex items-center text-xs text-accent hover:underline"
+        >
+          {t('findStocks')} →
+        </Link>
+      </Card>
+    );
+  }
+
+  const visible = visibleSymbols.slice(0, PREVIEW_LIMIT);
+  const overflow = visibleSymbols.length - visible.length;
 
   return (
     <Card
       title={t('watchlist')}
-      subtitle={tWatch('count', { count: symbols.length })}
+      subtitle={tWatch('count', { count: visibleSymbols.length })}
     >
       <ul className="divide-y divide-border text-sm">
         {visible.map((sym) => {

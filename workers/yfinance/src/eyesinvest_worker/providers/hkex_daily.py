@@ -297,8 +297,18 @@ def sync_hkex_short_sales_combined(
         am_shares: int | None = None
         am_hkd: float | None = None
         if am:
-            am_shares = am[code][1]
-            am_hkd = am[code][2]
+            # `am[code]` is normally a (name, shares, hkd) tuple from
+            # `sync_hkex_am_short_sales`, but defensively skip any code whose
+            # AM row is missing or malformed — otherwise a single bad parse
+            # crashes the whole sync-shorts run with KeyError / IndexError.
+            am_row = am.get(code)
+            if am_row is not None and len(am_row) >= 3:
+                am_shares = am_row[1]
+                am_hkd = am_row[2]
+            elif am_row is not None:
+                logger.warning(
+                    f"HKEX AM row for code {code} is malformed; skipping AM fields"
+                )
         rows.append(
             ShortSaleRow(
                 stock_id=stock_id,

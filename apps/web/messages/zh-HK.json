@@ -56,6 +56,13 @@
     "watchlistSubtitle": "即將推出",
     "watchlistBody": "新增股票以並列追蹤相對強弱、擁擠比率與 AI 事件。",
     "findStocks": "尋找股票",
+    "marketFilter": {
+      "label": "市場",
+      "all": "全部",
+      "us": "美股市場",
+      "hk": "港股市場"
+    },
+    "watchlistEmptyForMarket": "自選股中沒有{{market}}股票。",
     "topMovers": "熱門波動",
     "topMoversSubtitle": "今日最大漲跌幅",
     "topMoversGainers": "上漲",
