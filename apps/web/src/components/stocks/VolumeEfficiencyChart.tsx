@@ -240,7 +240,7 @@ export function VolumeEfficiencyChart({
         </div>
         <div className="flex items-baseline gap-4">
           {avg30 != null && (
-            <div className="flex items-baseline gap-1.5">
+            <div className="hidden items-baseline gap-1.5 sm:flex">
               <span className="inline-block h-2 w-2 rounded-sm bg-orange-400" aria-hidden />
               <span className="text-2xs text-fg-subtle">{t('turnover30d')}</span>
               <span className="tabular font-mono text-xs font-medium text-fg">
