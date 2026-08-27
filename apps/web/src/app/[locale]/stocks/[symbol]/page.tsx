@@ -34,8 +34,8 @@ interface StockPageProps {
 // when the user picks a short visible range like 1M.
 const CHART_DAYS = 756;
 
-// ?range= → visibleDays. Default '1Y' (= 252) so an unparameterized URL
-// behaves the same as today.
+// ?range= → visibleDays. Default '1M' (= 21 trading days) so an
+// unparameterized URL shows the most recent month of data.
 const RANGE_DAYS: Record<ChartRange, number> = {
   '1M': 21,
   '3M': 63,
@@ -45,8 +45,8 @@ const RANGE_DAYS: Record<ChartRange, number> = {
 };
 
 function parseRange(raw: string | undefined): ChartRange {
-  if (raw === '1M' || raw === '3M' || raw === '6M' || raw === '3Y') return raw;
-  return '1Y';
+  if (raw === '3M' || raw === '6M' || raw === '1Y' || raw === '3Y') return raw;
+  return '1M';
 }
 
 export default async function StockPage({ params, searchParams }: StockPageProps) {

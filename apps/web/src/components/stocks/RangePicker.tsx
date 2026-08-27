@@ -9,7 +9,7 @@ export type ChartRange = '1M' | '3M' | '6M' | '1Y' | '3Y';
 const RANGES: ChartRange[] = ['1M', '3M', '6M', '1Y', '3Y'];
 
 interface RangePickerProps {
-  /** Current range, derived from ?range= on the page. Defaults to '1Y'. */
+  /** Current range, derived from ?range= on the page. Defaults to '1M'. */
   current: ChartRange;
 }
 
@@ -26,8 +26,8 @@ export function RangePicker({ current }: RangePickerProps) {
 
   const handleClick = (range: ChartRange) => {
     const params = new URLSearchParams(searchParams.toString());
-    if (range === '1Y') {
-      // '1Y' is the default — strip the param so the URL stays canonical.
+    if (range === '1M') {
+      // '1M' is the default — strip the param so the URL stays canonical.
       params.delete('range');
     } else {
       params.set('range', range);
