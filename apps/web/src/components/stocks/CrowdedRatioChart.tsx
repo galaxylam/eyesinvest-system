@@ -75,6 +75,7 @@ export function CrowdedRatioChart({
         textColor: '#9ca3af',
         fontFamily: 'JetBrains Mono, ui-monospace, monospace',
         fontSize: 10,
+        attributionLogo: false,
       },
       grid: {
         vertLines: { visible: false },

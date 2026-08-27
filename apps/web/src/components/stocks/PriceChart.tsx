@@ -94,6 +94,7 @@ export function PriceChart({
         textColor: '#94a3b8',
         fontFamily: 'JetBrains Mono, ui-monospace, monospace',
         fontSize: 11,
+        attributionLogo: false,
       },
       grid: {
         vertLines: { color: 'rgba(51, 65, 85, 0.3)' },

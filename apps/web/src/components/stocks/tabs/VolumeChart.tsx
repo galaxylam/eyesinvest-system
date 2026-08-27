@@ -42,6 +42,7 @@ export function VolumeChart({ symbol, bars, height = 180 }: VolumeChartProps) {
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
         textColor: '#9ca3af',
+        attributionLogo: false,
       },
       grid: {
         vertLines: { visible: false },
