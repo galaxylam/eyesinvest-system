@@ -306,6 +306,11 @@ export interface ScreenerRow {
   volumeEfficiencyToday: number | null;
   /** MA5(volume) / MA30(volume) for the latest day. Null until ≥30 days of history. */
   crowdedRatio: number | null;
+  /** Trailing 30d max drawdown as (lastClose − 30dPeak) ÷ 30dPeak. Negative
+   *  fraction, e.g. −0.18 = 18% below the 30d peak. Null until ≥30 days of
+   *  history. Used by the "already pulled back" filter — see
+   *  `ScreenerFilters.drawdown30dMax`. */
+  drawdown30d: number | null;
   /** Signed delta of ma5 vs the prior trading day. Null on the first row of the series. */
   ma5Slope: number | null;
   /** Signed delta of ma20 vs the prior trading day. Null on the first row of the series. */
@@ -354,6 +359,17 @@ export interface ScreenerFilters {
   yieldMin?: number;
   /** Lower bound on 1-month return (percent points, e.g. 0 = ≥0%). */
   return1mMin?: number;
+  /** Upper bound on 1-month return (percent points, e.g. 5 = ≤+5%).
+   *  Use for "stocks that haven't run up too much recently". */
+  return1mMax?: number;
+  /** Upper bound on 3-month return (percent points, e.g. 10 = ≤+10%). */
+  return3mMax?: number;
+  /** Upper bound on 6-month return (percent points, e.g. 20 = ≤+20%). */
+  return6mMax?: number;
+  /** Upper bound on 30-day drawdown (negative fraction, e.g. −0.10 = "at
+   *  least 10% off the 30-day peak"). Matches the
+   *  `ScreenerRow.drawdown30d` sign convention — nulls are excluded. */
+  drawdown30dMax?: number;
   /** Lower bound on volume efficiency (ratio, e.g. 1 = ≥1×). */
   volumeEfficiencyMin?: number;
   /** Lower bound on crowded ratio (MA5÷MA30, e.g. 1.5 = ≥1.5×). */

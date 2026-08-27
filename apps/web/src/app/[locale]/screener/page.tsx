@@ -9,6 +9,8 @@ import {
 } from '@/lib/stocks/queries';
 import { ScreenerFilters as ScreenerFiltersPanel } from '@/components/screener/ScreenerFilters';
 import { ScreenerTable } from '@/components/screener/ScreenerTable';
+import { ScreenerTableShell } from '@/components/screener/ScreenerTableShell';
+import { ScreenerTransitionProvider } from '@/components/screener/ScreenerTransitionContext';
 
 interface ScreenerPageProps {
   params: Promise<{ locale: string }>;
@@ -19,6 +21,15 @@ interface ScreenerPageProps {
     pe?: string;
     yield?: string;
     ret1m?: string;
+    /** Upper bound on 1M return (percent points). */
+    ret1mmax?: string;
+    /** Upper bound on 3M return (percent points). */
+    ret3mmax?: string;
+    /** Upper bound on 6M return (percent points). */
+    ret6mmax?: string;
+    /** Upper bound on 30d drawdown (negative fraction as a percent, e.g.
+     *  -10 = "at least 10% off the 30d peak"). */
+    dd30?: string;
     eff?: string;
     crowd?: string;
     /** Crowded ratio upper bound — currently only '1' for the "<1×" subdued filter. */
@@ -68,6 +79,25 @@ function parseFilters(sp: Awaited<ScreenerPageProps['searchParams']>): ScreenerF
   if (sp.ret1m) {
     const n = Number(sp.ret1m);
     if (Number.isFinite(n)) f.return1mMin = n;
+  }
+  if (sp.ret1mmax) {
+    const n = Number(sp.ret1mmax);
+    if (Number.isFinite(n)) f.return1mMax = n;
+  }
+  if (sp.ret3mmax) {
+    const n = Number(sp.ret3mmax);
+    if (Number.isFinite(n)) f.return3mMax = n;
+  }
+  if (sp.ret6mmax) {
+    const n = Number(sp.ret6mmax);
+    if (Number.isFinite(n)) f.return6mMax = n;
+  }
+  // dd30 is encoded as a percent integer in the URL (e.g. -10 → -0.10
+  // internally), so the dropdown labels can read like `≤ −10%` without
+  // exposing fractional literals.
+  if (sp.dd30) {
+    const n = Number(sp.dd30);
+    if (Number.isFinite(n) && n <= 0) f.drawdown30dMax = n / 100;
   }
   if (sp.eff) {
     const n = Number(sp.eff);
@@ -161,15 +191,19 @@ export default async function ScreenerPage({ params, searchParams }: ScreenerPag
         <p className="mt-1 text-sm text-fg-muted">{t('subtitle')}</p>
       </div>
 
-      <div className="space-y-4">
-        <ScreenerFiltersPanel current={filters} sectors={sectors} />
+      <ScreenerTransitionProvider>
+        <div className="space-y-4">
+          <ScreenerFiltersPanel current={filters} sectors={sectors} />
 
-        <ScreenerTable rows={rows} sort={sort} preservedSearch={preservedSearch} />
+          <ScreenerTableShell>
+            <ScreenerTable rows={rows} sort={sort} preservedSearch={preservedSearch} />
+          </ScreenerTableShell>
 
-        <p className="text-2xs text-fg-subtle">
-          {t('count', { count: rows.length })}
-        </p>
-      </div>
+          <p className="text-2xs text-fg-subtle">
+            {t('count', { count: rows.length })}
+          </p>
+        </div>
+      </ScreenerTransitionProvider>
     </div>
   );
 }

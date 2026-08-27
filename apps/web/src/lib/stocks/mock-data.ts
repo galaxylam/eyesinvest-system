@@ -1121,6 +1121,7 @@ function buildMockScreenerRow(symbol: string): ScreenerRow | null {
     return1y: latest?.return1y ?? null,
     volumeEfficiencyToday: efficiency?.efficiencyToday ?? null,
     crowdedRatio: crowded?.ratio ?? null,
+    drawdown30d: latest?.maxDrawdown30d ?? null,
     ma5Slope: latest?.ma5Slope ?? null,
     ma20Slope: latest?.ma20Slope ?? null,
     greenRedVolumeRatio1m: latest?.greenRedVolumeRatio1m ?? null,

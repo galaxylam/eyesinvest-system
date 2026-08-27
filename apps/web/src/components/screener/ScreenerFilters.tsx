@@ -1,9 +1,9 @@
 'use client';
 
-import { useTransition } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import type { ScreenerFilters } from '@/lib/stocks/queries';
+import { useScreenerTransition } from './ScreenerTransitionContext';
 
 /** Serialise the four new combined filters into compact URL params.
  *  - ma5 / ma20: 'up' | 'down' (or undefined)
@@ -40,7 +40,9 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [pending, startTransition] = useTransition();
+  // Shared with `<ScreenerTableShell>` so the filter badge and the table
+  // overlay flip on the same transition.
+  const { pending, startTransition } = useScreenerTransition();
 
   const apply = (next: ScreenerFilters) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -58,6 +60,16 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
     else params.delete('yield');
     if (next.return1mMin != null) params.set('ret1m', String(next.return1mMin));
     else params.delete('ret1m');
+    if (next.return1mMax != null) params.set('ret1mmax', String(next.return1mMax));
+    else params.delete('ret1mmax');
+    if (next.return3mMax != null) params.set('ret3mmax', String(next.return3mMax));
+    else params.delete('ret3mmax');
+    if (next.return6mMax != null) params.set('ret6mmax', String(next.return6mMax));
+    else params.delete('ret6mmax');
+    // dd30 is encoded as a percent integer so the URL reads `dd30=-10`
+    // instead of `dd30=-0.1` — friendlier for hand-edits / sharing.
+    if (next.drawdown30dMax != null) params.set('dd30', String(Math.round(next.drawdown30dMax * 100)));
+    else params.delete('dd30');
     if (next.volumeEfficiencyMin != null) params.set('eff', String(next.volumeEfficiencyMin));
     else params.delete('eff');
     if (next.crowdedRatioMin != null) params.set('crowd', String(next.crowdedRatioMin));
@@ -94,6 +106,10 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
     current.peMax != null ||
     current.yieldMin != null ||
     current.return1mMin != null ||
+    current.return1mMax != null ||
+    current.return3mMax != null ||
+    current.return6mMax != null ||
+    current.drawdown30dMax != null ||
     current.volumeEfficiencyMin != null ||
     current.crowdedRatioMin != null ||
     current.crowdedRatioMax != null ||
@@ -107,11 +123,13 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
     <div
       className="flex flex-wrap items-end gap-3 rounded-md border border-border bg-bg-elevated p-3"
       data-pending={pending ? '' : undefined}
+      aria-busy={pending || undefined}
     >
       <SelectField
         label={t('filter.market')}
         value={current.market ?? ''}
         onChange={(v) => apply({ ...current, market: v === '' ? undefined : (v as 'US' | 'HK') })}
+        disabled={pending}
         options={[
           { value: '', label: t('filter.all') },
           { value: 'US', label: t('filter.us') },
@@ -122,6 +140,7 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
         label={t('filter.sector')}
         value={current.sector ?? ''}
         onChange={(v) => apply({ ...current, sector: v === '' ? undefined : v })}
+        disabled={pending}
         options={[
           { value: '', label: t('filter.all') },
           ...sectors.map((s) => ({ value: s, label: s })),
@@ -133,6 +152,7 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
         onChange={(v) =>
           apply({ ...current, marketCapMin: v === '' ? undefined : Number(v) })
         }
+        disabled={pending}
         options={[
           { value: '', label: t('filter.any') },
           { value: '10000000000', label: t('filter.cap10b') },
@@ -147,6 +167,7 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
         onChange={(v) =>
           apply({ ...current, peMax: v === '' ? undefined : Number(v) })
         }
+        disabled={pending}
         options={[
           { value: '', label: t('filter.any') },
           { value: '15', label: `≤ 15` },
@@ -161,6 +182,7 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
         onChange={(v) =>
           apply({ ...current, yieldMin: v === '' ? undefined : Number(v) })
         }
+        disabled={pending}
         options={[
           { value: '', label: t('filter.any') },
           { value: '0.01', label: `≥ 1%` },
@@ -174,6 +196,7 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
         onChange={(v) =>
           apply({ ...current, return1mMin: v === '' ? undefined : Number(v) })
         }
+        disabled={pending}
         options={[
           { value: '', label: t('filter.any') },
           { value: '-20', label: `≥ −20%` },
@@ -183,11 +206,74 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
         ]}
       />
       <SelectField
+        label={t('filter.return1mMax')}
+        value={current.return1mMax == null ? '' : String(current.return1mMax)}
+        onChange={(v) =>
+          apply({ ...current, return1mMax: v === '' ? undefined : Number(v) })
+        }
+        disabled={pending}
+        options={[
+          { value: '', label: t('filter.any') },
+          { value: '0', label: t('filter.ret1mMaxLE0') },
+          { value: '5', label: t('filter.ret1mMaxLE5') },
+          { value: '10', label: t('filter.ret1mMaxLE10') },
+        ]}
+      />
+      <SelectField
+        label={t('filter.return3mMax')}
+        value={current.return3mMax == null ? '' : String(current.return3mMax)}
+        onChange={(v) =>
+          apply({ ...current, return3mMax: v === '' ? undefined : Number(v) })
+        }
+        disabled={pending}
+        options={[
+          { value: '', label: t('filter.any') },
+          { value: '0', label: t('filter.ret3mMaxLE0') },
+          { value: '10', label: t('filter.ret3mMaxLE10') },
+          { value: '20', label: t('filter.ret3mMaxLE20') },
+        ]}
+      />
+      <SelectField
+        label={t('filter.return6mMax')}
+        value={current.return6mMax == null ? '' : String(current.return6mMax)}
+        onChange={(v) =>
+          apply({ ...current, return6mMax: v === '' ? undefined : Number(v) })
+        }
+        disabled={pending}
+        options={[
+          { value: '', label: t('filter.any') },
+          { value: '0', label: t('filter.ret6mMaxLE0') },
+          { value: '20', label: t('filter.ret6mMaxLE20') },
+          { value: '50', label: t('filter.ret6mMaxLE50') },
+        ]}
+      />
+      <SelectField
+        label={t('filter.drawdown30dMax')}
+        value={
+          current.drawdown30dMax == null
+            ? ''
+            : String(Math.round(current.drawdown30dMax * 100))
+        }
+        onChange={(v) =>
+          apply({
+            ...current,
+            drawdown30dMax: v === '' ? undefined : Number(v) / 100,
+          })
+        }
+        disabled={pending}
+        options={[
+          { value: '', label: t('filter.any') },
+          { value: '-10', label: t('filter.dd30LE10') },
+          { value: '-20', label: t('filter.dd30LE20') },
+        ]}
+      />
+      <SelectField
         label={t('filter.volumeEfficiency')}
         value={current.volumeEfficiencyMin == null ? '' : String(current.volumeEfficiencyMin)}
         onChange={(v) =>
           apply({ ...current, volumeEfficiencyMin: v === '' ? undefined : Number(v) })
         }
+        disabled={pending}
         options={[
           { value: '', label: t('filter.any') },
           { value: '0.25', label: t('filter.eff0_25') },
@@ -221,6 +307,7 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
           }
           apply({ ...current, crowdedRatioMin: Number(v), crowdedRatioMax: undefined });
         }}
+        disabled={pending}
         options={[
           { value: '', label: t('filter.any') },
           { value: '1', label: t('filter.crowd1') },
@@ -236,6 +323,7 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
         onChange={(v) =>
           apply({ ...current, squeezeMin: v === '' ? undefined : Number(v) })
         }
+        disabled={pending}
         options={[
           { value: '', label: t('filter.any') },
           { value: '40', label: t('filter.sq40') },
@@ -249,6 +337,7 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
         onChange={(v) =>
           apply({ ...current, ma5Trend: v === '' ? undefined : (v as 'up' | 'down') })
         }
+        disabled={pending}
         options={[
           { value: '', label: t('filter.any') },
           { value: 'up', label: t('filter.maUp') },
@@ -261,6 +350,7 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
         onChange={(v) =>
           apply({ ...current, ma20Trend: v === '' ? undefined : (v as 'up' | 'down') })
         }
+        disabled={pending}
         options={[
           { value: '', label: t('filter.any') },
           { value: 'up', label: t('filter.maUp') },
@@ -278,6 +368,7 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
           const n = Number(v) as 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | -0.1 | -0.2 | -0.3 | -0.4 | -0.5 | -0.6;
           apply({ ...current, greenShareThreshold: n });
         }}
+        disabled={pending}
         options={[
           { value: '', label: t('filter.any') },
           { value: '0.6', label: t('filter.gsGT60') },
@@ -306,6 +397,7 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
           const periods = Number(v.slice(1)) as 1 | 2 | 3;
           apply({ ...current, shortInterestTrend: { direction, periods } });
         }}
+        disabled={pending}
         options={[
           { value: '', label: t('filter.any') },
           { value: 'u1', label: t('filter.siInc1') },
@@ -316,6 +408,38 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
           { value: 'd3', label: t('filter.siDec3') },
         ]}
       />
+
+      {pending && (
+        <span
+          role="status"
+          aria-live="polite"
+          className="inline-flex items-center gap-1.5 self-center text-2xs text-fg-muted"
+        >
+          <svg
+            className="h-3 w-3 animate-spin text-accent"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <circle
+              cx="12"
+              cy="12"
+              r="9"
+              stroke="currentColor"
+              strokeOpacity="0.25"
+              strokeWidth="3"
+            />
+            <path
+              d="M21 12a9 9 0 0 0-9-9"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+            />
+          </svg>
+          <span>{t('loading')}</span>
+        </span>
+      )}
 
       {hasAny && (
         <button
@@ -336,11 +460,13 @@ function SelectField({
   value,
   onChange,
   options,
+  disabled,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   options: { value: string; label: string }[];
+  disabled?: boolean;
 }) {
   return (
     <label className="flex flex-col gap-1">
@@ -348,7 +474,8 @@ function SelectField({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="focus-ring rounded-md border border-border bg-bg px-2.5 py-1.5 text-xs text-fg"
+        disabled={disabled}
+        className="focus-ring rounded-md border border-border bg-bg px-2.5 py-1.5 text-xs text-fg disabled:cursor-not-allowed disabled:opacity-50"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>

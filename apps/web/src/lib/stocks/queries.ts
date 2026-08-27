@@ -1065,8 +1065,8 @@ export async function getScreenerRows(
         // dropdowns (see 0011_screener_filters.sql).
         supabase.from('ey_stock_analytics').select(
           'stock_id, as_of_date, return_1m, return_3m, return_6m, return_1y, ' +
-            'volume_efficiency, crowded_ratio, ma5_slope, ma20_slope, green_red_volume_ratio_1m, ' +
-            'green_red_volume_share_1m, squeeze_score',
+            'volume_efficiency, crowded_ratio, max_drawdown_30d, ma5_slope, ma20_slope, ' +
+            'green_red_volume_ratio_1m, green_red_volume_share_1m, squeeze_score',
         ).in('stock_id', ids).order('as_of_date', { ascending: false }),
         // Last 5 bi-weekly settlements per stock — enough for the
         // "increasing / decreasing for 1/2/3 periods" short-interest filter.
@@ -1087,6 +1087,7 @@ export async function getScreenerRows(
       const analyticsMap = new Map<string, {
         return_1m: number | null; return_3m: number | null; return_6m: number | null; return_1y: number | null;
         volume_efficiency: number | null; crowded_ratio: number | null;
+        max_drawdown_30d: number | null;
         ma5_slope: number | null; ma20_slope: number | null; green_red_volume_ratio_1m: number | null;
         green_red_volume_share_1m: number | null;
         squeeze_score: number | null;
@@ -1095,6 +1096,7 @@ export async function getScreenerRows(
         stock_id: string; as_of_date: string;
         return_1m: number | null; return_3m: number | null; return_6m: number | null; return_1y: number | null;
         volume_efficiency: number | null; crowded_ratio: number | null;
+        max_drawdown_30d: number | null;
         ma5_slope: number | null; ma20_slope: number | null; green_red_volume_ratio_1m: number | null;
         green_red_volume_share_1m: number | null;
         squeeze_score: number | null;
@@ -1137,6 +1139,7 @@ export async function getScreenerRows(
           return1y: a ? num(a.return_1y) : null,
           volumeEfficiencyToday: a ? num(a.volume_efficiency) : null,
           crowdedRatio: a ? num(a.crowded_ratio) : null,
+          drawdown30d: a ? num(a.max_drawdown_30d) : null,
           ma5Slope: a ? num(a.ma5_slope) : null,
           ma20Slope: a ? num(a.ma20_slope) : null,
           greenRedVolumeRatio1m: a ? num(a.green_red_volume_ratio_1m) : null,
@@ -1422,6 +1425,19 @@ function applyScreenerFilters(
     if (f.peMax != null && (r.peRatio == null || r.peRatio > f.peMax)) return false;
     if (f.yieldMin != null && (r.dividendYield == null || r.dividendYield < f.yieldMin)) return false;
     if (f.return1mMin != null && (r.return1m == null || r.return1m < f.return1mMin)) return false;
+    // Return upper bounds — nulls excluded (no synthetic zero to compare).
+    if (f.return1mMax != null && (r.return1m == null || r.return1m > f.return1mMax)) return false;
+    if (f.return3mMax != null && (r.return3m == null || r.return3m > f.return3mMax)) return false;
+    if (f.return6mMax != null && (r.return6m == null || r.return6m > f.return6mMax)) return false;
+    // 30d-drawdown upper bound: `drawdown30d` is a negative fraction, so the
+    // threshold is also negative (`−0.10` = "at least 10% off 30d peak").
+    // Nulls are excluded (no synthetic zero to compare).
+    if (
+      f.drawdown30dMax != null &&
+      (r.drawdown30d == null || r.drawdown30d > f.drawdown30dMax)
+    ) {
+      return false;
+    }
     if (
       f.volumeEfficiencyMin != null &&
       (r.volumeEfficiencyToday == null || r.volumeEfficiencyToday < f.volumeEfficiencyMin)
