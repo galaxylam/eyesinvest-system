@@ -214,6 +214,7 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
         disabled={pending}
         options={[
           { value: '', label: t('filter.any') },
+          { value: '10', label: `≤ 10` },
           { value: '15', label: `≤ 15` },
           { value: '25', label: `≤ 25` },
           { value: '40', label: `≤ 40` },
@@ -232,6 +233,8 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
           { value: '0.01', label: `≥ 1%` },
           { value: '0.03', label: `≥ 3%` },
           { value: '0.05', label: `≥ 5%` },
+          { value: '0.07', label: `≥ 7%` },
+          { value: '0.1', label: `≥ 10%` },
         ]}
       />
       <SelectField
@@ -247,6 +250,7 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
           { value: '-10', label: `≥ −10%` },
           { value: '0', label: `≥ 0%` },
           { value: '10', label: `≥ 10%` },
+          { value: '20', label: `≥ 20%` },
         ]}
       />
       <SelectField
@@ -287,7 +291,10 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
         options={[
           { value: '', label: t('filter.any') },
           { value: '0', label: t('filter.ret6mMaxLE0') },
+          { value: '10', label: t('filter.ret6mMaxLE10') },
           { value: '20', label: t('filter.ret6mMaxLE20') },
+          { value: '30', label: t('filter.ret6mMaxLE30') },
+          { value: '40', label: t('filter.ret6mMaxLE40') },
           { value: '50', label: t('filter.ret6mMaxLE50') },
         ]}
       />
@@ -309,6 +316,9 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
           { value: '', label: t('filter.any') },
           { value: '-10', label: t('filter.dd30LE10') },
           { value: '-20', label: t('filter.dd30LE20') },
+          { value: '-30', label: t('filter.dd30LE30') },
+          { value: '-40', label: t('filter.dd30LE40') },
+          { value: '-50', label: t('filter.dd30LE50') },
         ]}
       />
       <SelectField
@@ -358,6 +368,8 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
           { value: '1.2', label: t('filter.crowd1_2') },
           { value: '1.5', label: t('filter.crowd1_5') },
           { value: '2', label: t('filter.crowd2') },
+          { value: 'lt0.6', label: t('filter.crowdLT0_6') },
+          { value: 'lt0.8', label: t('filter.crowdLT0_8') },
           { value: 'lt1', label: t('filter.crowdLT1') },
         ]}
       />
