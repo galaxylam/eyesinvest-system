@@ -22,10 +22,6 @@ export async function Header({ locale }: HeaderProps) {
             { href: `/${locale}/dashboard`, label: t('dashboard') },
             { href: `/${locale}/watchlist`, label: t('watchlist') },
             { href: `/${locale}/screener`, label: t('screener') },
-            { href: `/${locale}/heatmap`, label: t('heatmap') },
-            { href: `/${locale}/rankings`, label: t('rankings') },
-            { href: `/${locale}/news`, label: t('news') },
-            { href: `/${locale}/ai`, label: t('ai') },
           ]}
         />
 
@@ -34,10 +30,6 @@ export async function Header({ locale }: HeaderProps) {
           <NavLink href={`/${locale}/dashboard`}>{t('dashboard')}</NavLink>
           <NavLink href={`/${locale}/watchlist`}>{t('watchlist')}</NavLink>
           <NavLink href={`/${locale}/screener`}>{t('screener')}</NavLink>
-          <NavLink href={`/${locale}/heatmap`}>{t('heatmap')}</NavLink>
-          <NavLink href={`/${locale}/rankings`}>{t('rankings')}</NavLink>
-          <NavLink href={`/${locale}/news`}>{t('news')}</NavLink>
-          <NavLink href={`/${locale}/ai`}>{t('ai')}</NavLink>
         </nav>
 
         {/* Page-transition spinner — sits beside the desktop nav. Sized
