@@ -249,13 +249,13 @@ export function VolumeEfficiencyChart({
               </span>
             </div>
           )}
-          <div className="flex items-baseline gap-2 border-l border-border pl-4">
+          <div className="hidden items-baseline gap-2 border-l border-border pl-4 sm:flex">
             <span className="text-2xs text-fg-subtle">{t('avgGreen')}</span>
             <span className="tabular font-mono text-xs font-medium text-emerald-500">
               {greenAvg != null ? `${greenAvg.toFixed(3)}×` : '—'}
             </span>
           </div>
-          <div className="flex items-baseline gap-2">
+          <div className="hidden items-baseline gap-2 sm:flex">
             <span className="text-2xs text-fg-subtle">{t('avgRed')}</span>
             <span className="tabular font-mono text-xs font-medium text-rose-500">
               {redAvg != null ? `${redAvg.toFixed(3)}×` : '—'}
