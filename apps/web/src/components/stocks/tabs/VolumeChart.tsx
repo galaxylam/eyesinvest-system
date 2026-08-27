@@ -51,6 +51,8 @@ export function VolumeChart({ symbol, bars, height = 180 }: VolumeChartProps) {
       crosshair: { mode: CrosshairMode.Normal },
       rightPriceScale: { borderVisible: false },
       timeScale: { borderVisible: false },
+      // Sub-chart locked to the Range picker — disable direct pan/zoom
+      // so it can never drift out of sync with the main chart.
       handleScroll: false,
       handleScale: false,
     });
@@ -84,7 +86,7 @@ export function VolumeChart({ symbol, bars, height = 180 }: VolumeChartProps) {
   return (
     <div
       ref={containerRef}
-      style={{ height }}
+      style={{ height, touchAction: 'pan-y' }}
       role="img"
       aria-label={`Volume histogram for ${symbol}`}
       className="w-full"

@@ -105,6 +105,25 @@ export function PriceChart({
       crosshair: { mode: 1 },
       autoSize: true,
       height,
+      // Mobile UX: a single-finger drag on the chart would otherwise
+      // hijack the page's vertical scroll. Disable touch-drag panning
+      // so vertical drag falls through to page scroll; keep pinch
+      // (two-finger) zoom and the desktop mouse interactions intact.
+      // The chart container's `touch-action: pan-y` style (below) is the
+      // other half — without it, lightweight-charts' default
+      // `touch-action: none` would still swallow the events at the
+      // browser level.
+      handleScroll: {
+        mouseWheel: true,
+        pressedMouseMove: true,
+        horzTouchDrag: false,
+        vertTouchDrag: false,
+      },
+      handleScale: {
+        mouseWheel: true,
+        pinch: true,
+        axisPressedMouseMove: true,
+      },
     });
 
     // ===== Candlestick price series (top 75%) =====
@@ -236,7 +255,7 @@ export function PriceChart({
           labels={labels}
         />
       )}
-      <div ref={containerRef} className="w-full" style={{ height }} />
+      <div ref={containerRef} className="w-full" style={{ height, touchAction: 'pan-y' }} />
     </div>
   );
 }

@@ -287,7 +287,7 @@ export function VolumeEfficiencyChart({
           </div>
         </div>
       </div>
-      <div ref={containerRef} className="w-full" style={{ height }} />
+      <div ref={containerRef} className="w-full" style={{ height, touchAction: 'pan-y' }} />
     </section>
   );
 }
