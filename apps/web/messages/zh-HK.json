@@ -143,6 +143,10 @@
     "empty": "目前篩選條件下沒有任何股票。",
     "loading": "正在載入結果…",
     "filter": {
+      "title": "篩選",
+      "expand": "展開篩選",
+      "collapse": "收起篩選",
+      "search": "搜尋",
       "market": "市場",
       "sector": "行業",
       "marketCap": "市值",

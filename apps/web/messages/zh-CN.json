@@ -143,6 +143,10 @@
     "empty": "目前筛选条件下没有任何股票。",
     "loading": "正在加载结果…",
     "filter": {
+      "title": "筛选",
+      "expand": "展开筛选",
+      "collapse": "收起筛选",
+      "search": "搜索",
       "market": "市场",
       "sector": "行业",
       "marketCap": "市值",

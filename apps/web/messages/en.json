@@ -143,6 +143,10 @@
     "empty": "No stocks match the current filters.",
     "loading": "Loading results…",
     "filter": {
+      "title": "Filters",
+      "expand": "Expand filters",
+      "collapse": "Collapse filters",
+      "search": "Search",
       "market": "Market",
       "sector": "Sector",
       "marketCap": "Market cap",
