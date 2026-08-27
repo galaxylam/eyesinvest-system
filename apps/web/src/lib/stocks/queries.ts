@@ -1147,19 +1147,30 @@ export async function getScreenerRows(
         if (analyticsMap.has(a.stock_id)) continue; // first wins; we ordered desc
         analyticsMap.set(a.stock_id, a);
       }
-      // Latest short-interest settlements per stock_id (already desc-ordered).
-      const interestByStock = new Map<string, number[]>();
+
+      // stock_id → symbol lookup so the short-interest map can be keyed
+      // by symbol (which is what `applyScreenerFilters` uses for lookups
+      // via `r.symbol`).
+      const symbolByStockId = new Map<string, string>();
+      for (const s of stockRows) symbolByStockId.set(s.id, s.symbol);
+
+      // Latest short-interest settlements per symbol (already desc-ordered).
+      // Keyed by symbol (not stock_id) so `applyScreenerFilters` can look
+      // up by `r.symbol` — see the bug note in applyScreenerFilters.
+      const interestBySymbol = new Map<string, number[]>();
       for (const r of (interestRes.data ?? []) as Array<{ stock_id: string; settlement_date: string; short_interest: number | null }>) {
         if (r.short_interest == null) continue;
-        const list = interestByStock.get(r.stock_id) ?? [];
+        const sym = symbolByStockId.get(r.stock_id);
+        if (sym == null) continue;
+        const list = interestBySymbol.get(sym) ?? [];
         if (list.length < 5) list.push(Number(r.short_interest));
-        interestByStock.set(r.stock_id, list);
+        interestBySymbol.set(sym, list);
       }
 
       const rows: ScreenerRow[] = stockRows.map((s) => {
         const q = quoteMap.get(s.id);
         const a = analyticsMap.get(s.id);
-        const interest = interestByStock.get(s.id) ?? [];
+        const interest = interestBySymbol.get(s.symbol) ?? [];
         const num = (v: unknown): number | null => (v == null ? null : Number(v));
         return {
           symbol: s.symbol,
@@ -1193,7 +1204,7 @@ export async function getScreenerRows(
       });
 
       return applyScreenerSort(
-        applyScreenerFilters(rows, filters, interestByStock),
+        applyScreenerFilters(rows, filters, interestBySymbol),
         sort,
       ).slice(0, SCREENER_LIMIT);
     },
