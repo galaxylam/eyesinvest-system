@@ -22,6 +22,7 @@ import { StockChartStack } from '@/components/stocks/StockChartStack';
 import { StockHeader } from '@/components/stocks/StockHeader';
 import { SqueezeCard } from '@/components/stocks/SqueezeCard';
 import { StockTabs } from '@/components/stocks/tabs/StockTabs';
+import { BackLink } from '@/components/stocks/BackLink';
 
 interface StockPageProps {
   params: Promise<{ locale: string; symbol: string }>;
@@ -115,12 +116,7 @@ export default async function StockPage({ params, searchParams }: StockPageProps
   return (
     <div className="mx-auto max-w-screen-xl px-4 py-6 sm:px-6 lg:py-8">
       <div className="mb-3">
-        <a
-          href={`/${locale}/search`}
-          className="inline-flex items-center text-xs text-fg-muted hover:text-fg"
-        >
-          ← {t('backToSearch')}
-        </a>
+        <BackLink />
       </div>
 
       <div className="space-y-4">
