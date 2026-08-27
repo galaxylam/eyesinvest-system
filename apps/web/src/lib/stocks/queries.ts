@@ -765,6 +765,18 @@ function diffPct(a: number | null, b: number | null): number | null {
   return +(a - b).toFixed(2);
 }
 
+/** Merge a list of per-chunk query errors into a single error-shaped value
+ *  matching the `{ error: PostgrestError | null }` shape the screener
+ *  pipeline already consumes. Returns the first non-null error, or null
+ *  if all chunks succeeded — chunks that errored partway through still
+ *  let the caller inspect via the returned error. */
+function mergeErrors<T>(errors: Array<T | null | undefined>): T | null {
+  for (const e of errors) {
+    if (e) return e;
+  }
+  return null;
+}
+
 // ============================================================================
 // Volume Efficiency + Crowded Ratio — combination metrics for the Volume tab
 // and the screener. Pulls the same `ey_price_1d` rows as `getVolumeSeries`
@@ -1052,10 +1064,27 @@ export async function getScreenerRows(
       if (stockRows.length === 0) return [];
 
       const ids = stockRows.map((s) => s.id);
-      const [quotesRes, analyticsRes, interestRes] = await Promise.all([
-        supabase.from('ey_quote_snapshot').select(
-          'stock_id, last_price, change, change_percent, volume',
-        ).in('stock_id', ids),
+      // Split the id list into chunks so each `.in('stock_id', chunk)`
+      // serializes under PostgREST's 16KB request-URL limit. With 200+
+      // active stocks the unchunked query exceeds that limit and undici
+      // throws UND_ERR_HEADERS_OVERFLOW — the screener then silently falls
+      // back to mock data, which is why the user was seeing real-data
+      // fetches fail in production. CHUNK_SIZE 80 keeps each `.in()` to
+      // ~3KB of UUID payload, well under the limit.
+      const CHUNK_SIZE = 80;
+      const idChunks: string[][] = [];
+      for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+        idChunks.push(ids.slice(i, i + CHUNK_SIZE));
+      }
+
+      const [quotesArr, analyticsArr, interestArr] = await Promise.all([
+        Promise.all(
+          idChunks.map((chunk) =>
+            supabase.from('ey_quote_snapshot').select(
+              'stock_id, last_price, change, change_percent, volume',
+            ).in('stock_id', chunk),
+          ),
+        ),
         // One row per (stock, as_of_date); take the latest by as_of_date desc.
         // Phase 3+: `volume_efficiency` + `crowded_ratio` are persisted here by
         // `sync-sector-strength` — replaces the previous per-stock
@@ -1063,18 +1092,32 @@ export async function getScreenerRows(
         // Phase 3+ screener filters: ma5_slope / ma20_slope /
         // green_red_volume_ratio_1m drive the "MA upward / 1M green vs red"
         // dropdowns (see 0011_screener_filters.sql).
-        supabase.from('ey_stock_analytics').select(
-          'stock_id, as_of_date, return_1m, return_3m, return_6m, return_1y, ' +
-            'volume_efficiency, crowded_ratio, max_drawdown_30d, ma5_slope, ma20_slope, ' +
-            'green_red_volume_ratio_1m, green_red_volume_share_1m, squeeze_score',
-        ).in('stock_id', ids).order('as_of_date', { ascending: false }),
+        Promise.all(
+          idChunks.map((chunk) =>
+            supabase.from('ey_stock_analytics').select(
+              'stock_id, as_of_date, return_1m, return_3m, return_6m, return_1y, ' +
+                'volume_efficiency, crowded_ratio, max_drawdown_30d, ma5_slope, ma20_slope, ' +
+                'green_red_volume_ratio_1m, green_red_volume_share_1m, squeeze_score',
+            ).in('stock_id', chunk).order('as_of_date', { ascending: false }),
+          ),
+        ),
         // Last 5 bi-weekly settlements per stock — enough for the
         // "increasing / decreasing for 1/2/3 periods" short-interest filter.
         // One row per (stock_id, settlement_date); 30 stocks × 5 ≈ 150 rows.
-        supabase.from('ey_short_interest').select(
-          'stock_id, settlement_date, short_interest',
-        ).in('stock_id', ids).order('settlement_date', { ascending: false }).limit(ids.length * 5),
+        // We ask each chunk for `chunk.length * 5` rows so the per-stock
+        // cap is unchanged regardless of chunking.
+        Promise.all(
+          idChunks.map((chunk) =>
+            supabase.from('ey_short_interest').select(
+              'stock_id, settlement_date, short_interest',
+            ).in('stock_id', chunk).order('settlement_date', { ascending: false })
+              .limit(chunk.length * 5),
+          ),
+        ),
       ]);
+      const quotesRes = { data: quotesArr.flatMap((r) => r.data ?? []), error: mergeErrors(quotesArr.map((r) => r.error)) };
+      const analyticsRes = { data: analyticsArr.flatMap((r) => r.data ?? []), error: mergeErrors(analyticsArr.map((r) => r.error)) };
+      const interestRes = { data: interestArr.flatMap((r) => r.data ?? []), error: mergeErrors(interestArr.map((r) => r.error)) };
       if (quotesRes.error) throw quotesRes.error;
       if (analyticsRes.error) throw analyticsRes.error;
       if (interestRes.error) throw interestRes.error;
