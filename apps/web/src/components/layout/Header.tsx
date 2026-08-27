@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { LangSwitcher } from './LangSwitcher';
 import { MobileMenu } from './MobileMenu';
 import { ThemeToggle } from './ThemeToggle';
+import { PageTransitionIndicator } from './PageTransitionIndicator';
 import { SearchBar } from '@/components/search/SearchBar';
 
 interface HeaderProps {
@@ -38,6 +39,14 @@ export async function Header({ locale }: HeaderProps) {
           <NavLink href={`/${locale}/news`}>{t('news')}</NavLink>
           <NavLink href={`/${locale}/ai`}>{t('ai')}</NavLink>
         </nav>
+
+        {/* Page-transition spinner — sits beside the desktop nav. Sized
+            with a fixed 20px box so it doesn't shift the surrounding
+            layout when fading in / out. Hidden on mobile (no nav links
+            to sit beside). */}
+        <div className="hidden md:flex">
+          <PageTransitionIndicator />
+        </div>
 
         {/* Search */}
         <div className="flex-1 sm:max-w-2xl">
