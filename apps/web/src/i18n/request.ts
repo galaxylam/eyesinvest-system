@@ -12,11 +12,16 @@ import { routing } from './routing';
  * is the source of truth — `messages/` is regenerated from it via the
  * "sync locales" snippet in apps/web/README.
  */
-export default getRequestConfig(async ({ locale }) => {
+export default getRequestConfig(async ({ requestLocale }) => {
+  // next-intl 3.22+ requires awaiting the request-scoped locale promise
+  // rather than reading the `locale` field synchronously. Falls back to
+  // the configured default when no locale is in scope (e.g. for a
+  // /not-found render outside the locale segment).
+  const requested = await requestLocale;
   const safeLocale = (
     routing.locales as readonly string[]
-  ).includes(locale)
-    ? locale
+  ).includes(requested ?? '')
+    ? (requested as (typeof routing.locales)[number])
     : routing.defaultLocale;
 
   const messages = (await import(`../../messages/${safeLocale}.json`)).default;
