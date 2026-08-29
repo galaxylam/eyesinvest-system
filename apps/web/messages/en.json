@@ -455,5 +455,15 @@
     "confidenceLabel": "Confidence",
     "perStock": "For {symbol}",
     "noMappingsForStock": "No approved news for this stock yet."
+  },
+  "searchPage": {
+    "titleAll": "All stocks",
+    "titleWithQuery": "Search results for \"{query}\"",
+    "subtitleAll": "Browse the full stock universe, or type a symbol / company name to filter.",
+    "subtitleResults": "{count, plural, =0 {No matches.} one {1 match.} other {{count} matches.}}",
+    "noResults": "No matches for \"{query}\". Check the symbol and try again.",
+    "noResultsAll": "No stocks available yet.",
+    "sourceSupabase": "Source: Supabase (ey_stocks)",
+    "sourceMock": "Source: mock fallback"
   }
 }

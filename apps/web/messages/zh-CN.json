@@ -455,5 +455,15 @@
     "confidenceLabel": "置信度",
     "perStock": "{symbol} 相关",
     "noMappingsForStock": "此股票暂无已审批的新闻。"
+  },
+  "searchPage": {
+    "titleAll": "全部股票",
+    "titleWithQuery": "“{query}”搜索结果",
+    "subtitleAll": "浏览全部股票,或输入代号 / 公司名称进行筛选。",
+    "subtitleResults": "{count, plural, =0 {无符合结果。} other {共 {count} 个结果。}}",
+    "noResults": "找不到符合“{query}”的结果。请检查代号后再试一次。",
+    "noResultsAll": "暂时没有股票数据。",
+    "sourceSupabase": "数据来源:Supabase (ey_stocks)",
+    "sourceMock": "数据来源:模拟数据"
   }
 }

@@ -560,6 +560,44 @@ export function getMockSectorDaily(
  * Sorted by `return1m` desc so the leader is on top — matches the dashboard
  * leaderboard ordering pattern. Unknown sector returns `[]`.
  */
+
+/**
+ * Substring match against symbol, name, and aliases. Case-insensitive.
+ * Symbol-prefix matches rank first, then name-substring matches.
+ * Empty / whitespace query returns the full universe (same as
+ * `getAllMockStocks`) so the search page can render a "browse all"
+ * state for the empty-input case.
+ */
+export function getMockSearchStocks(
+  query: string,
+  limit = 20,
+): StockSearchResult[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return getAllMockStocks().slice(0, limit);
+  // Score: -1 = exact match, 0 = symbol-prefix, 1 = symbol-substring,
+  // 2 = name-substring, 3 = alias-substring. Lower is better; ties broken
+  // by alphabetical symbol.
+  const ranked = STOCKS
+    .map((s) => {
+      const sym = s.symbol.toLowerCase();
+      const name = s.name.toLowerCase();
+      let score = 99;
+      if (sym === q) score = -1;
+      else if (sym.startsWith(q)) score = 0;
+      else if (sym.includes(q)) score = 1;
+      else if (name.includes(q)) score = 2;
+      else if (s.aliases.some((a) => a.toLowerCase().includes(q))) score = 3;
+      return { s, score };
+    })
+    .filter((r) => r.score !== 99)
+    .sort((a, b) =>
+      a.score !== b.score ? a.score - b.score : a.s.symbol.localeCompare(b.s.symbol),
+    )
+    .slice(0, limit)
+    .map((r) => toSearchResult(r.s));
+  return ranked;
+}
+
 export function getMockStocksBySector(sector: string): SectorMember[] {
   const members = STOCKS.filter((s) => s.sector === sector);
   const rows: SectorMember[] = members.map((s) => {

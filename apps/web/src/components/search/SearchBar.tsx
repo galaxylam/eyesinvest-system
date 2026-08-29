@@ -30,7 +30,12 @@ export function SearchBar({ locale }: SearchBarProps) {
     e.preventDefault();
     const q = value.trim();
     if (q.length < 1) return;
-    router.push(`/${locale}/stocks/${encodeURIComponent(q.toUpperCase())}`);
+    // Navigate to /search?q=... — the search results page is
+    // case-insensitive (Supabase ilike + mock .toLowerCase()) so the
+    // user's literal input ("0700.hk", "aapl", "Apple", etc.) is
+    // matched against the canonical uppercase symbol. The page title
+    // uppercases for display, but the search itself accepts any case.
+    router.push(`/${locale}/search?q=${encodeURIComponent(q)}`);
   }
 
   return (

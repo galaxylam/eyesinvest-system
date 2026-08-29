@@ -455,5 +455,15 @@
     "confidenceLabel": "信心指數",
     "perStock": "{symbol} 相關",
     "noMappingsForStock": "此股票暫無已審批的新聞。"
+  },
+  "searchPage": {
+    "titleAll": "全部股票",
+    "titleWithQuery": "「{query}」搜尋結果",
+    "subtitleAll": "瀏覽全部股票,或輸入代號 / 公司名稱以篩選。",
+    "subtitleResults": "{count, plural, =0 {無符合結果。} other {共 {count} 個結果。}}",
+    "noResults": "找不到符合「{query}」的結果。請檢查代號後再試一次。",
+    "noResultsAll": "暫時沒有股票資料。",
+    "sourceSupabase": "資料來源:Supabase (ey_stocks)",
+    "sourceMock": "資料來源:模擬資料"
   }
 }

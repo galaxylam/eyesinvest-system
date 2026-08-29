@@ -33,6 +33,7 @@ import {
   getMockRelativeStrength,
   getMockScreenerRows,
   getMockSectorDaily,
+  getMockSearchStocks,
   getMockShortInterestBySymbol,
   getMockShortSelling,
   getMockSqueeze,
@@ -178,6 +179,60 @@ export async function listAllStocks(): Promise<QueryResult<StockSearchResult[]>>
       return (data ?? []) as unknown as StockSearchResult[];
     },
     () => getAllMockStocks(),
+  );
+}
+
+/**
+ * Substring search over symbol + name. Used by `/search?q=...` — never
+ * 404s, just returns an empty list when nothing matches. Symbol prefix
+ * matches rank first; exact matches rank highest.
+ */
+export async function searchStocks(
+  query: string,
+  opts: { limit?: number } = {},
+): Promise<QueryResult<StockSearchResult[]>> {
+  const limit = opts.limit ?? 20;
+  const q = query.trim();
+  if (!q) {
+    // Empty query — return the full universe as a browse-friendly default.
+    return listAllStocks();
+  }
+  return withFallback(
+    async (supabase) => {
+      const pattern = `%${q}%`;
+      const { data, error } = await supabase
+        .from('ey_stocks')
+        .select('id, symbol, name, market, currency, sector, industry')
+        .eq('is_active', true)
+        .or(`symbol.ilike.${pattern},name.ilike.${pattern}`)
+        .order('symbol', { ascending: true })
+        .limit(limit);
+      if (error) throw error;
+      // Promote exact-prefix matches to the top; fall back to DB order.
+      const rows = (data ?? []) as unknown as StockSearchResult[];
+      const upper = q.toUpperCase();
+      return rows
+        .map((r, i) => ({
+          r,
+          // Negative rank = higher priority. Exact-prefix symbol → -2;
+          // substring match on symbol → -1; name-substring only → 0.
+          rank:
+            r.symbol.toUpperCase() === upper
+              ? -2
+              : r.symbol.toUpperCase().startsWith(upper)
+                ? -1
+                : 0,
+          // Preserve original order as tiebreaker.
+          originalIndex: i,
+        }))
+        .sort((a, b) =>
+          a.rank !== b.rank
+            ? a.rank - b.rank
+            : a.originalIndex - b.originalIndex,
+        )
+        .map((x) => x.r);
+    },
+    () => getMockSearchStocks(q, limit),
   );
 }
 
