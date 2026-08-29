@@ -214,3 +214,88 @@ class ShortInterestRow(BaseModel):
     prior_short_interest: int | None = None
     change_pct: float | None = None
     source: str = "finra"
+
+
+# ===== Phase 7 — News ingestion ============================================
+
+
+class RssSource(BaseModel):
+    """One entry in NEWS_RSS_FEEDS — a feed the worker pulls each run.
+
+    `market` is informational ('US' | 'HK' | 'GLOBAL'); the worker does not
+    filter the LLM by market, it just inlines the universe so the model can
+    ground its answers.
+    """
+
+    name: str
+    url: str
+    market: Literal["US", "HK", "GLOBAL"] = "GLOBAL"
+
+
+class NewsArticle(BaseModel):
+    """One row of `ey_news_article`. Deduped by `source_url` (UNIQUE in DB).
+
+    Worker fetches, parses, and upserts these. The article is the immutable
+    provenance trail — admin never mutates this row, only the mappings /
+    relationships that point to it.
+    """
+
+    source_url: str
+    source_name: str
+    title: str
+    summary: str | None = None
+    published_at: datetime | None = None
+    fetched_at: datetime = Field(default_factory=lambda: datetime.utcnow())
+    language: Literal["en"] = "en"
+    raw_metadata: dict | None = None
+    source: str = "rss"
+
+
+# ===== Phase 8 — AI analysis ================================================
+
+
+class NewsStockMapping(BaseModel):
+    """One row of `ey_news_stock_mapping` — AI's per-impact analysis.
+
+    Worker writes status='pending'; admin flips to 'approved' or 'rejected'
+    to make the row canonical. Re-runs UPSERT on (article_id, stock_id)
+    and refresh the AI columns in place without touching the approval fields.
+    """
+
+    article_id: str
+    stock_id: str
+    sentiment: Literal["bullish", "bearish", "neutral"] | None = None
+    impact_direction: Literal["positive", "negative", "mixed", "none"] | None = None
+    impact_severity: Literal["low", "medium", "high", "critical"] | None = None
+    confidence: float | None = None
+    rationale: str | None = None
+    # Approval fields default to None so the worker's UPSERT is a no-op on
+    # existing approved rows (only the AI columns get refreshed).
+    status: Literal["pending", "approved", "rejected"] | None = None
+    approved_by: str | None = None
+    approved_at: datetime | None = None
+    reviewer_notes: str | None = None
+    source: str = "openrouter"
+
+
+class StockRelationship(BaseModel):
+    """One row of `ey_stock_relationship` — knowledge-graph edge.
+
+    Natural key: (source_stock_id, target_stock_id, relationship_type).
+    Worker UPSERTs on this; status='pending' on first sight. Admin approves
+    to make the edge canonical and reusable across future runs.
+    """
+
+    source_stock_id: str
+    target_stock_id: str
+    relationship_type: Literal[
+        "supplier", "competitor", "customer", "partner", "parent_subsidiary"
+    ]
+    confidence: float | None = None
+    rationale: str | None = None
+    evidence_news_id: str | None = None
+    status: Literal["pending", "approved", "rejected"] | None = None
+    approved_by: str | None = None
+    approved_at: datetime | None = None
+    reviewer_notes: str | None = None
+    source: str = "openrouter"

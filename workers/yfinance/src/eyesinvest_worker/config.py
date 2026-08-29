@@ -79,3 +79,51 @@ class WorkerConfig(BaseSettings):
     sector_strength_lookback_days: int = Field(
         default=252, alias="SECTOR_STRENGTH_LOOKBACK_DAYS"
     )
+
+    # Phase 7 — news ingestion (crawler-based). NEWS_RSS_FEEDS is
+    # deprecated — kept for backward compat but ignored by the worker.
+    # The new path uses web crawling: the worker discovers article URLs
+    # from configured listing pages (Yahoo Finance by default) and
+    # fetches each article's full body via trafilatura before the LLM
+    # call. Per-site code is brittle but gives the LLM real text instead
+    # of RSS summaries.
+    news_rss_feeds_raw: str = Field(default="", alias="NEWS_RSS_FEEDS")
+    news_crawl_sources_raw: str = Field(default="", alias="NEWS_CRAWL_SOURCES")
+    news_lookback_hours: int = Field(default=48, alias="NEWS_LOOKBACK_HOURS")
+    news_throttle_seconds: float = Field(
+        default=1.0, alias="NEWS_THROTTLE_SECONDS"
+    )
+    # Hard cap on articles fetched per run, so a chatty source can't blow
+    # up the LLM cost on the first sync.
+    news_max_articles_per_run: int = Field(
+        default=200, alias="NEWS_MAX_ARTICLES_PER_RUN"
+    )
+    # When true (default), the worker fetches each RSS-discovered article's
+    # full body via the crawler and replaces the 300-char RSS summary with
+    # the full text. The LLM works much better with the body. Disable to
+    # use the lighter RSS-only path (no extra HTTP requests per article).
+    news_crawl_body_enabled: bool = Field(
+        default=True, alias="NEWS_CRAWL_BODY_ENABLED"
+    )
+
+    # Phase 8 — AI analysis via OpenRouter (OpenAI-compatible API).
+    # OPENROUTER_API_KEY absent → the worker still fetches RSS and writes
+    # ey_news_article rows, but skips the LLM pass (mappings stay absent).
+    openrouter_api_key: str | None = Field(
+        default=None, alias="OPENROUTER_API_KEY"
+    )
+    openrouter_model: str = Field(
+        default="anthropic/claude-haiku-4-5", alias="OPENROUTER_MODEL"
+    )
+    openrouter_base_url: str = Field(
+        default="https://openrouter.ai/api/v1", alias="OPENROUTER_BASE_URL"
+    )
+    openrouter_throttle_seconds: float = Field(
+        default=2.0, alias="OPENROUTER_THROTTLE_SECONDS"
+    )
+    # How many articles to bundle into one LLM call. 5 ≈ 2.5K input tokens
+    # which fits comfortably under Haiku's 200K context and keeps each call
+    # under $0.01.
+    openrouter_max_articles_per_llm_call: int = Field(
+        default=5, alias="OPENROUTER_MAX_ARTICLES_PER_LLM_CALL"
+    )

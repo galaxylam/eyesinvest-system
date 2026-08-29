@@ -28,6 +28,7 @@ from eyesinvest_worker.log import configure_logging, logger
 from eyesinvest_worker.models import Fundamentals, IndexQuote
 from eyesinvest_worker.providers import (
     compute_analytics,
+    compute_news,
     compute_sector_strength,
     fetch_daily_history,
     fetch_fundamentals,
@@ -348,6 +349,44 @@ def sync_sector_strength() -> None:
     )
 
 
+@main.command("sync-news")
+@click.option("--skip-llm", is_flag=True, help="Discover + write articles only; skip OpenRouter pass.")
+@click.option("--limit", "article_limit", type=int, default=None, help="Override NEWS_MAX_ARTICLES_PER_RUN for this run.")
+def sync_news_cmd(skip_llm: bool, article_limit: int | None) -> None:
+    """RSS discovery + body crawl + OpenRouter analysis; write pending rows.
+
+    Pass A runs RSS feeds (NEWS_RSS_FEEDS) to discover article URLs,
+    then fetches each article's full body via trafilatura and upserts
+    into ey_news_article. Dedup is on source_url (UNIQUE).
+
+    Pass B runs when OPENROUTER_API_KEY is set (and --skip-llm is not):
+    bundle fresh articles into batches, call the configured OpenRouter
+    model with a JSON response format, parse out per-article impact
+    analysis (ey_news_stock_mapping) and stock<->stock edges
+    (ey_stock_relationship). Both land as status='pending' — an admin
+    approves them via apps/admin/news.
+
+    Without --skip-llm / --limit, the knobs come from WorkerConfig
+    (NEWS_RSS_FEEDS, NEWS_LOOKBACK_HOURS, NEWS_CRAWL_BODY_ENABLED,
+    OPENROUTER_MODEL, etc).
+    """
+    cfg = _load_config()
+    configure_logging(cfg.log_level)
+    client = make_client(cfg.supabase_url, cfg.supabase_service_role_key)
+
+    if article_limit is not None:
+        cfg.news_max_articles_per_run = article_limit
+
+    result = compute_news(client, cfg, skip_llm=skip_llm)
+    logger.info(
+        f"sync-news done — {result.articles_written} articles, "
+        f"{result.mappings_written} mappings, "
+        f"{result.relationships_written} relationships written "
+        f"({result.skipped_seen} already seen, "
+        f"{result.failed_llm_batches} LLM batch(es) failed)"
+    )
+
+
 @main.command("sync-squeeze")
 def sync_squeeze() -> None:
     """Compute the short-squeeze score per stock and upsert onto ey_stock_analytics.
@@ -419,7 +458,12 @@ def sync_squeeze() -> None:
 
 @main.command("all")
 def sync_all() -> None:
-    """Run every sync command in sequence: prices → quotes → fundamentals → analytics → indexes → shorts → squeeze → sector-strength."""
+    """Run every sync command in sequence: prices → quotes → fundamentals → analytics → indexes → shorts → squeeze → sector-strength.
+
+    `sync-news` is intentionally excluded — run it explicitly via
+    `uv run python -m eyesinvest_worker sync-news` until the news + AI
+    workflow has been reviewed and approved.
+    """
     for cmd in (
         "sync-prices",
         "sync-quotes",
@@ -427,6 +471,9 @@ def sync_all() -> None:
         "sync-analytics",
         "sync-indexes",
         "sync-shorts",
+        # NOTE: sync-news is intentionally NOT in this list. Run it
+        # explicitly via `uv run python -m eyesinvest_worker sync-news`
+        # until the news+AI workflow has been reviewed and approved.
         "sync-squeeze",
         "sync-sector-strength",
     ):
