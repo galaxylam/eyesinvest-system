@@ -16,6 +16,8 @@ and a forward-looking map of what each phase will add.
 | Technical indicators (MA / RSI / MACD / vol / drawdown / returns) | derived from `ey_price_1d` | `ey_stock_analytics` | `sync-analytics` |
 | Short-squeeze score (DTC + SI Δ 1W + 30D drawdown + vol spike + HK AM share) | derived from `ey_short_interest` + `ey_short_sale_1d` + `ey_price_1d` | `ey_stock_analytics` (6 nullable columns) | `sync-squeeze` |
 | Reference indices (SPX, HSI) | Yahoo Finance | `ey_index_quote` | `sync-indexes` |
+| News articles (RSS) | Public RSS feeds (`NEWS_RSS_FEEDS`) | `ey_news_article` | `sync-news` (Pass A) |
+| News→stock impact + stock↔stock knowledge graph | OpenRouter (Claude Haiku 4.5) | `ey_news_stock_mapping`, `ey_stock_relationship` (both status='pending' on write) | `sync-news` (Pass B) |
 
 **Stock prices, sector strengths, news, and AI analysis are different
 categories** — the table above only covers the first. Sector strength,
@@ -80,8 +82,9 @@ converges to `30` within 1–2 weeks of regular `sync-shorts` runs. See
 | `sync-analytics` | daily, right after `sync-prices` | Drives the AnalyticsPanel on every stock detail page | `uv run python -m eyesinvest_worker sync-analytics` |
 | `sync-shorts` | daily, after `sync-analytics` | US FINRA + HK HKEX/SFC short-selling data (see [`workers/yfinance/HK_SHORTS.md`](../workers/yfinance/HK_SHORTS.md)) | `uv run python -m eyesinvest_worker sync-shorts` |
 | `sync-squeeze` | daily, after `sync-shorts` | Per-stock 0..100 squeeze score — DTC + SI Δ 1W + drawdown + volume spike + HK AM share; surfaced on the stock detail page (SqueezeCard) and as a screener filter. Regime bands: ≥70 high, ≥50 elevated, ≥30 normal, <30 low (see [`docs/SQUEEZE.md`](./SQUEEZE.md)) | `uv run python -m eyesinvest_worker sync-squeeze` |
+| `sync-news` | every 30 min during market hours; hourly off-hours | RSS ingestion (Pass A always) + OpenRouter analysis (Pass B when `OPENROUTER_API_KEY` set). Pending rows land in `ey_news_article` / `ey_news_stock_mapping` / `ey_stock_relationship` — admin approves via `apps/admin/news` + `/relationships`. See [`workers/yfinance/SYNC_NEWS.md`](../workers/yfinance/SYNC_NEWS.md). | `uv run python -m eyesinvest_worker sync-news` |
 | `sync-indexes` | daily, after US close + at 09:00 HKT | Powers the Market Summary tiles (SPX, HSI) | `uv run python -m eyesinvest_worker sync-indexes` |
-| **All commands** | once per day (manual) | Convenience — now 8 steps in sequence (prices + quotes + fundamentals + analytics + shorts + squeeze + sector-strength + indexes) | `pnpm worker:sync` |
+| **All commands** | once per day (manual) | Convenience — now 9 steps in sequence (prices + quotes + fundamentals + analytics + indexes + shorts + news + squeeze + sector-strength) | `pnpm worker:sync` |
 
 ### Market-hours notes
 
@@ -233,21 +236,34 @@ seed data. Phase 3 ships `ey_stock_analytics` (per-stock technicals) and
 
 ### News — Phase 7
 
-No tables yet. Phase 7 will add:
+Tables (migration `0016_news_and_ai.sql`):
 
-- `ey_news_article` — source / title / url / published_at / related stocks
-- Worker command: `uv run python -m eyesinvest_worker sync-news`
+- `ey_news_article` — RSS articles, deduped by `source_url`. Public read.
+- Worker command: `uv run python -m eyesinvest_worker sync-news` (Pass A
+  always runs when `NEWS_RSS_FEEDS` is set; Pass B requires
+  `OPENROUTER_API_KEY`)
 - Cadence: every 30 min during market hours; off-hours every 2h
+- Env vars: `NEWS_RSS_FEEDS` (JSON list), `NEWS_LOOKBACK_HOURS`,
+  `NEWS_THROTTLE_SECONDS`, `NEWS_MAX_ARTICLES_PER_RUN`
+- See [`workers/yfinance/SYNC_NEWS.md`](../workers/yfinance/SYNC_NEWS.md)
+  for full setup + cost notes
 
 ### AI analysis — Phase 8
 
-No tables yet. Phase 8 will add:
+Tables (migration `0016_news_and_ai.sql`):
 
-- `ey_ai_event` — events the LLM extracts (earnings / guidance / M&A / …)
-- `ey_ai_mapping` — relationship graph between entities (company → supplier,
-  → competitor, → customer)
-- OpenRouter integration; env var `OPENROUTER_API_KEY` already reserved in
-  `.env.example`
+- `ey_news_stock_mapping` — article↔stock impact analysis
+  (sentiment / direction / severity / confidence / rationale). Public
+  reads only `status='approved'` rows (admin approves via
+  `apps/admin/news`).
+- `ey_stock_relationship` — stock↔stock knowledge-graph edges
+  (supplier / competitor / customer / partner / parent_subsidiary).
+  Same status workflow.
+- OpenRouter integration via the `openai` Python SDK (OpenRouter is
+  OpenAI-compatible). Env var `OPENROUTER_API_KEY` consumed by the
+  worker.
+- Default model: `anthropic/claude-haiku-4-5`; override via
+  `OPENROUTER_MODEL`.
 - Cadence: nightly batch; on-demand for breaking news
 
 ### Real-time streaming — Phase 4+
@@ -274,6 +290,11 @@ cd workers/yfinance && uv run python -m eyesinvest_worker sync-prices
 
 # Just refresh the per-stock technical indicators
 cd workers/yfinance && uv run python -m eyesinvest_worker sync-analytics
+
+# Just refresh news + AI (RSS + OpenRouter analysis; needs OPENROUTER_API_KEY)
+cd workers/yfinance && uv run python -m eyesinvest_worker sync-news
+#   --skip-llm  → RSS only, no OpenRouter budget spent
+#   --limit N   → cap the per-run article count
 
 # Just refresh the reference index quotes (SPX, HSI)
 cd workers/yfinance && uv run python -m eyesinvest_worker sync-indexes

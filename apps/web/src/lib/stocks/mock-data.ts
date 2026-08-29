@@ -2,12 +2,14 @@ import type {
   IndexCode,
   IndexQuote,
   Market,
+  NewsStockMappingDto,
   PriceBar,
   PriceSeries,
   Quote,
   SectorDailyRow,
   StockAnalytics,
   StockFundamentals,
+  StockRelationshipDto,
 } from '@eyesinvest/types';
 import { MARKET_INDICES } from '@eyesinvest/types';
 import type {
@@ -1160,4 +1162,231 @@ export function getMockShortInterestBySymbol(): Map<string, number[]> {
  */
 function listMockSymbols(): string[] {
   return STOCKS.map((s) => s.symbol);
+}
+
+// ============================================================================
+// Phase 7 + 8 — News mocks for /news page and stock detail News tab.
+// Hand-curated so the public app is browseable without Supabase.
+// Stock IDs match the seed in `seed.sql` (symbol-as-id pattern is NOT used
+// here — admin's mock-data uses `${symbol}-${market}` keys; these use the
+// same convention so a future migration to real UUIDs is a simple rename).
+// ============================================================================
+
+const _uuid = (s: string) => `00000000-0000-4000-8000-${s.padStart(12, '0')}`;
+
+const REF_AAPL = { id: 'AAPL-US', symbol: 'AAPL', market: 'US' as const, name: 'Apple Inc.' };
+const REF_MSFT = { id: 'MSFT-US', symbol: 'MSFT', market: 'US' as const, name: 'Microsoft Corporation' };
+const REF_NVDA = { id: 'NVDA-US', symbol: 'NVDA', market: 'US' as const, name: 'NVIDIA Corporation' };
+const REF_TSLA = { id: 'TSLA-US', symbol: 'TSLA', market: 'US' as const, name: 'Tesla Inc.' };
+const REF_GOOGL = { id: 'GOOGL-US', symbol: 'GOOGL', market: 'US' as const, name: 'Alphabet Inc.' };
+const REF_TENCENT = { id: '0700.HK-HK', symbol: '0700.HK', market: 'HK' as const, name: 'Tencent Holdings Ltd.' };
+
+const _NOW = '2026-01-15T10:30:00.000Z';
+const _APPROVED = '2026-01-15T11:00:00.000Z';
+
+const MOCK_NEWS_MAPPINGS: NewsStockMappingDto[] = [
+  {
+    id: _uuid('000000000001'),
+    articleId: _uuid('000000000001'),
+    stockId: REF_NVDA.id,
+    sentiment: 'bullish',
+    impactDirection: 'positive',
+    impactSeverity: 'high',
+    confidence: 0.87,
+    rationale: 'New Blackwell GPU wins major hyperscaler order from Microsoft.',
+    status: 'approved',
+    approvedBy: 'local-dev',
+    approvedAt: _APPROVED,
+    reviewerNotes: null,
+    createdAt: _NOW,
+    source: 'public',
+    article: {
+      id: _uuid('000000000001'),
+      sourceUrl: 'https://www.reuters.com/business/nvidia-blackwell-order',
+      sourceName: 'Reuters Business',
+      title: 'NVIDIA announces new Blackwell GPU, wins major hyperscaler order',
+      summary: 'Microsoft, Meta and Oracle commit to multi-billion-dollar Blackwell purchase.',
+      publishedAt: '2026-01-15T09:00:00.000Z',
+      fetchedAt: _NOW,
+      language: 'en',
+    },
+    stock: REF_NVDA,
+  },
+  {
+    id: _uuid('000000000002'),
+    articleId: _uuid('000000000002'),
+    stockId: REF_AAPL.id,
+    sentiment: 'bullish',
+    impactDirection: 'positive',
+    impactSeverity: 'high',
+    confidence: 0.91,
+    rationale: 'Vision Pro 2 launch drives upgrade-cycle narrative.',
+    status: 'approved',
+    approvedBy: 'local-dev',
+    approvedAt: _APPROVED,
+    reviewerNotes: null,
+    createdAt: _NOW,
+    source: 'public',
+    article: {
+      id: _uuid('000000000002'),
+      sourceUrl: 'https://finance.yahoo.com/news/apple-vision-pro-2-launch',
+      sourceName: 'Yahoo Finance',
+      title: 'Apple unveils Vision Pro 2 with $1,999 starting price',
+      summary: 'Apple\'s next-gen spatial computer slims down and gains native Apple Intelligence.',
+      publishedAt: '2026-01-14T15:30:00.000Z',
+      fetchedAt: _NOW,
+      language: 'en',
+    },
+    stock: REF_AAPL,
+  },
+  {
+    id: _uuid('000000000003'),
+    articleId: _uuid('000000000003'),
+    stockId: REF_TSLA.id,
+    sentiment: 'bearish',
+    impactDirection: 'negative',
+    impactSeverity: 'high',
+    confidence: 0.84,
+    rationale: 'Voluntary recall affects ~120k vehicles; near-term margin pressure.',
+    status: 'approved',
+    approvedBy: 'local-dev',
+    approvedAt: _APPROVED,
+    reviewerNotes: null,
+    createdAt: _NOW,
+    source: 'public',
+    article: {
+      id: _uuid('000000000003'),
+      sourceUrl: 'https://www.marketwatch.com/tesla-recall-2026',
+      sourceName: 'MarketWatch',
+      title: 'Tesla recalls 120,000 vehicles over steering software defect',
+      summary: 'NHTSA filing cites firmware issue in Model Y / Model 3 builds.',
+      publishedAt: '2026-01-14T12:00:00.000Z',
+      fetchedAt: _NOW,
+      language: 'en',
+    },
+    stock: REF_TSLA,
+  },
+  {
+    id: _uuid('000000000004'),
+    articleId: _uuid('000000000004'),
+    stockId: REF_TENCENT.id,
+    sentiment: 'bullish',
+    impactDirection: 'positive',
+    impactSeverity: 'medium',
+    confidence: 0.78,
+    rationale: 'Tencent Cloud wins several ASEAN public-sector contracts.',
+    status: 'approved',
+    approvedBy: 'local-dev',
+    approvedAt: _APPROVED,
+    reviewerNotes: null,
+    createdAt: _NOW,
+    source: 'public',
+    article: {
+      id: _uuid('000000000004'),
+      sourceUrl: 'https://www.scmp.com/tech/tencent-cloud-asean',
+      sourceName: 'SCMP Tech',
+      title: 'Tencent Cloud expands aggressively into ASEAN, wins Singapore gov deal',
+      summary: 'Counter-program to AWS / Azure; pricing undercuts US hyperscalers by 20-30%.',
+      publishedAt: '2026-01-13T08:00:00.000Z',
+      fetchedAt: _NOW,
+      language: 'en',
+    },
+    stock: REF_TENCENT,
+  },
+  {
+    id: _uuid('000000000005'),
+    articleId: _uuid('000000000005'),
+    stockId: REF_GOOGL.id,
+    sentiment: 'neutral',
+    impactDirection: 'mixed',
+    impactSeverity: 'low',
+    confidence: 0.55,
+    rationale: 'EU antitrust ruling cited as risk; appeal outcome uncertain.',
+    status: 'approved',
+    approvedBy: 'local-dev',
+    approvedAt: _APPROVED,
+    reviewerNotes: null,
+    createdAt: _NOW,
+    source: 'public',
+    article: {
+      id: _uuid('000000000005'),
+      sourceUrl: 'https://www.bloomberg.com/news/google-eu-ruling',
+      sourceName: 'Bloomberg',
+      title: 'EU court upholds antitrust ruling against Google Search bundling',
+      summary: 'Alphabet faces remedies; appeals process expected to take 18+ months.',
+      publishedAt: '2026-01-12T17:00:00.000Z',
+      fetchedAt: _NOW,
+      language: 'en',
+    },
+    stock: REF_GOOGL,
+  },
+];
+
+const MOCK_RELATIONSHIPS: StockRelationshipDto[] = [
+  {
+    id: _uuid('000000000010'),
+    sourceStockId: REF_NVDA.id,
+    targetStockId: REF_MSFT.id,
+    relationshipType: 'customer',
+    confidence: 0.81,
+    rationale: 'Microsoft is one of the largest Azure-cloud customers of NVIDIA GPUs.',
+    evidenceNewsId: _uuid('000000000001'),
+    status: 'approved',
+    approvedBy: 'local-dev',
+    approvedAt: _APPROVED,
+    reviewerNotes: null,
+    createdAt: _NOW,
+    source: REF_NVDA,
+    target: REF_MSFT,
+  },
+  {
+    id: _uuid('000000000011'),
+    sourceStockId: REF_AAPL.id,
+    targetStockId: REF_GOOGL.id,
+    relationshipType: 'competitor',
+    confidence: 0.93,
+    rationale: 'Both compete in spatial-computing / XR platform layer.',
+    evidenceNewsId: _uuid('000000000002'),
+    status: 'approved',
+    approvedBy: 'local-dev',
+    approvedAt: _APPROVED,
+    reviewerNotes: null,
+    createdAt: _NOW,
+    source: REF_AAPL,
+    target: REF_GOOGL,
+  },
+  {
+    id: _uuid('000000000012'),
+    sourceStockId: REF_MSFT.id,
+    targetStockId: REF_NVDA.id,
+    relationshipType: 'supplier',
+    confidence: 0.78,
+    rationale: 'NVIDIA supplies the GPUs Microsoft deploys in Azure.',
+    evidenceNewsId: _uuid('000000000001'),
+    status: 'approved',
+    approvedBy: 'local-dev',
+    approvedAt: _APPROVED,
+    reviewerNotes: null,
+    createdAt: _NOW,
+    source: REF_MSFT,
+    target: REF_NVDA,
+  },
+];
+
+export function getAllMockNewsMappings(limit = 50): NewsStockMappingDto[] {
+  return MOCK_NEWS_MAPPINGS.slice(0, limit);
+}
+
+export function getMockNewsMappingsForStock(
+  symbol: string,
+  limit = 30,
+): NewsStockMappingDto[] {
+  const upper = symbol.toUpperCase();
+  return MOCK_NEWS_MAPPINGS
+    .filter((m) => m.stock.symbol.toUpperCase() === upper)
+    .slice(0, limit);
+}
+
+export function getAllMockRelationships(limit = 30): StockRelationshipDto[] {
+  return MOCK_RELATIONSHIPS.slice(0, limit);
 }

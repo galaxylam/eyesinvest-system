@@ -6,4 +6,6 @@ export * from './ohlc';
 export * from './marketSession';
 export * from './stockAnalytics';
 export * from './indexQuote';
+export * from './newsArticle';
+export * from './aiMapping';
 export type { DatabasePlaceholder as Database } from './database';

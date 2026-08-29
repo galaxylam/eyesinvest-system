@@ -6,6 +6,7 @@ import type {
   VolumeSeries,
 } from '@/lib/stocks/queries';
 import { ComingSoonPanel } from './ComingSoonPanel';
+import { NewsPanel } from './NewsPanel';
 import { RelativeStrengthPanel } from './RelativeStrengthPanel';
 import { VolatilityPanel } from './VolatilityPanel';
 import { VolumePanel } from './VolumePanel';
@@ -90,7 +91,7 @@ export async function StockTabs({
         </TabsContent>
 
         <TabsContent value="news">
-          <ComingSoonPanel tabKey="news" />
+          <NewsPanel symbol={symbol} />
         </TabsContent>
 
         <TabsContent value="ai">

@@ -25,6 +25,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         <nav className="flex flex-1 flex-col gap-1 p-3 text-sm">
           <NavLink href="/dashboard">Dashboard</NavLink>
           <NavLink href="/stocks">Stocks</NavLink>
+          <NavLink href="/news">News review</NavLink>
+          <NavLink href="/relationships">Relationships</NavLink>
           <NavLink href="/settings">Settings</NavLink>
         </nav>
         <div className="border-t border-border p-3 text-xs text-fg-muted">

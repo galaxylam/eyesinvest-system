@@ -24,3 +24,14 @@ export const serverEnv = parseEnv();
 export const isSupabaseConfigured = Boolean(
   serverEnv.NEXT_PUBLIC_SUPABASE_URL && serverEnv.SUPABASE_SERVICE_ROLE_KEY,
 );
+
+/**
+ * Admin user stamp used for the Phase 7 / 8 approval workflow.
+ *
+ * Today the admin app runs without auth, so every approval is stamped
+ * with this constant. When real session auth lands in a later phase,
+ * replace this with the session user id — the column shape doesn't
+ * need to change.
+ */
+export const EY_ADMIN_DEFAULT_USER =
+  process.env.EY_ADMIN_DEFAULT_USER ?? 'local-dev';

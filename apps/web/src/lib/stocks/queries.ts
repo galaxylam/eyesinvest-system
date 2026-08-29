@@ -1,23 +1,33 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
+  ImpactDirection,
+  ImpactSeverity,
   IndexCode,
   IndexQuote,
+  MappingStatus,
   Market,
+  NewsStockMappingDto,
   PriceSeries,
   Quote,
+  RelationshipType,
   SectorDailyRow,
+  Sentiment,
   StockAnalytics,
   StockFundamentals,
+  StockRelationshipDto,
 } from '@eyesinvest/types';
 import { MARKET_INDICES, getMarketStatus } from '@eyesinvest/types';
 import { createServerClient } from '@/lib/supabase/server';
 import {
+  getAllMockNewsMappings,
+  getAllMockRelationships,
   getAllMockStocks,
   getMockAnalytics,
   getMockCrowdedRatio,
   getMockFundamentals,
   getMockIndexQuotes,
+  getMockNewsMappingsForStock,
   getMockPriceSeries,
   getMockQuote,
   getMockRelativeStrength,
@@ -1799,5 +1809,172 @@ export async function getSqueeze(
       } satisfies SqueezeScore;
     },
     () => getMockSqueeze(normalized),
+  );
+}
+
+// ============================================================================
+// Phase 7 + 8 — News (public read of admin-approved rows).
+//
+// RLS already filters `ey_news_stock_mapping` and `ey_stock_relationship`
+// to `status='approved'` for anon / authenticated, so we just select
+// whatever the cookie-authenticated anon key can see. Mock fallback returns
+// a hand-curated set so the page is browseable without Supabase.
+// ============================================================================
+
+// Select clause for approved mappings — joins article + stock so the page
+// can render "title — symbol" without a second round-trip.
+const NEWS_MAPPING_SELECT_PUBLIC =
+  'id, article_id, stock_id, sentiment, impact_direction, impact_severity, ' +
+  'confidence, rationale, status, approved_at, created_at, ' +
+  'ey_news_article!ey_news_stock_mapping_article_id_fkey(' +
+  '  id, source_url, source_name, title, summary, published_at, fetched_at' +
+  '), ' +
+  'ey_stocks!ey_news_stock_mapping_stock_id_fkey(id, symbol, market, name)';
+
+const NEWS_RELATIONSHIP_SELECT_PUBLIC =
+  'id, source_stock_id, target_stock_id, relationship_type, confidence, ' +
+  'rationale, status, approved_at, created_at, ' +
+  'src:ey_stocks!ey_stock_relationship_source_stock_id_fkey(id, symbol, market, name), ' +
+  'tgt:ey_stocks!ey_stock_relationship_target_stock_id_fkey(id, symbol, market, name)';
+
+function mapPublicMappingRow(r: any): NewsStockMappingDto {
+  return {
+    id: r.id,
+    articleId: r.article_id,
+    stockId: r.stock_id,
+    sentiment: r.sentiment as Sentiment | null,
+    impactDirection: r.impact_direction as ImpactDirection | null,
+    impactSeverity: r.impact_severity as ImpactSeverity | null,
+    confidence: r.confidence == null ? null : Number(r.confidence),
+    rationale: r.rationale,
+    status: r.status as MappingStatus,
+    approvedBy: null, // public client doesn't need this
+    approvedAt: r.approved_at,
+    reviewerNotes: null,
+    createdAt: r.created_at,
+    source: 'public',
+    article: {
+      id: r.ey_news_article.id,
+      sourceUrl: r.ey_news_article.source_url,
+      sourceName: r.ey_news_article.source_name,
+      title: r.ey_news_article.title,
+      summary: r.ey_news_article.summary,
+      publishedAt: r.ey_news_article.published_at,
+      fetchedAt: r.ey_news_article.fetched_at,
+      language: 'en',
+    },
+    stock: {
+      id: r.ey_stocks.id,
+      symbol: r.ey_stocks.symbol,
+      market: r.ey_stocks.market,
+      name: r.ey_stocks.name,
+    },
+  };
+}
+
+function mapPublicRelationshipRow(r: any): StockRelationshipDto {
+  return {
+    id: r.id,
+    sourceStockId: r.source_stock_id,
+    targetStockId: r.target_stock_id,
+    relationshipType: r.relationship_type as RelationshipType,
+    confidence: r.confidence == null ? null : Number(r.confidence),
+    rationale: r.rationale,
+    evidenceNewsId: null,
+    status: r.status as MappingStatus,
+    approvedBy: null,
+    approvedAt: r.approved_at,
+    reviewerNotes: null,
+    createdAt: r.created_at,
+    // Omit row `source` (provenance) — DTO uses `source` for joined ref.
+    source: {
+      id: r.src.id,
+      symbol: r.src.symbol,
+      market: r.src.market,
+      name: r.src.name,
+    },
+    target: {
+      id: r.tgt.id,
+      symbol: r.tgt.symbol,
+      market: r.tgt.market,
+      name: r.tgt.name,
+    },
+  };
+}
+
+/**
+ * Recent approved article↔stock mappings for the global /news page.
+ * RLS hides pending/rejected — anon can only see `status='approved'`.
+ * Sorted newest-approved first so the page mirrors admin activity.
+ */
+export async function getRecentNewsMappings(
+  opts: { limit?: number } = {},
+): Promise<QueryResult<NewsStockMappingDto[]>> {
+  const limit = opts.limit ?? 50;
+  return withFallback(
+    async (supabase) => {
+      const { data, error } = await supabase
+        .from('ey_news_stock_mapping')
+        .select(NEWS_MAPPING_SELECT_PUBLIC)
+        .order('approved_at', { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return ((data ?? []) as any[]).map(mapPublicMappingRow);
+    },
+    () => getAllMockNewsMappings(limit),
+  );
+}
+
+/**
+ * Approved mappings for one stock — used by the News tab on the stock
+ * detail page. RLS-filters automatically to `status='approved'`.
+ */
+export async function getNewsMappingsForStock(
+  symbol: string,
+  opts: { limit?: number } = {},
+): Promise<QueryResult<NewsStockMappingDto[]>> {
+  const normalized = symbol.toUpperCase();
+  const limit = opts.limit ?? 30;
+  return withFallback(
+    async (supabase) => {
+      const stockRes = await supabase
+        .from('ey_stocks')
+        .select('id')
+        .eq('symbol', normalized)
+        .maybeSingle();
+      if (stockRes.error) throw stockRes.error;
+      if (!stockRes.data) return [];
+      const { data, error } = await supabase
+        .from('ey_news_stock_mapping')
+        .select(NEWS_MAPPING_SELECT_PUBLIC)
+        .eq('stock_id', stockRes.data.id)
+        .order('approved_at', { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return ((data ?? []) as any[]).map(mapPublicMappingRow);
+    },
+    () => getMockNewsMappingsForStock(normalized, limit),
+  );
+}
+
+/**
+ * Recent approved stock↔stock edges for the global /news page's
+ * "Knowledge graph" section.
+ */
+export async function getRecentKnowledgeGraph(
+  opts: { limit?: number } = {},
+): Promise<QueryResult<StockRelationshipDto[]>> {
+  const limit = opts.limit ?? 30;
+  return withFallback(
+    async (supabase) => {
+      const { data, error } = await supabase
+        .from('ey_stock_relationship')
+        .select(NEWS_RELATIONSHIP_SELECT_PUBLIC)
+        .order('approved_at', { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return ((data ?? []) as any[]).map(mapPublicRelationshipRow);
+    },
+    () => getAllMockRelationships(limit),
   );
 }

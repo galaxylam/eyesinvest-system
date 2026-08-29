@@ -439,5 +439,21 @@
     "deleteConfirm": "確定刪除此股票?",
     "signedInAs": "已登入為管理員",
     "signOut": "登出"
+  },
+  "newsPage": {
+    "title": "新聞",
+    "subtitle": "由管理員審批的 AI 新聞分析及股票關係圖。",
+    "empty": "暫無已審批的新聞。新文章將於管理員完成審批後顯示。",
+    "sections": {
+      "recentImpact": "最新影響分析",
+      "knowledgeGraph": "知識圖譜 — 最新關係"
+    },
+    "viewSource": "查看來源 →",
+    "openAdmin": "開啟管理員審批 →",
+    "rationaleLabel": "原因",
+    "publishedLabel": "發佈時間",
+    "confidenceLabel": "信心指數",
+    "perStock": "{symbol} 相關",
+    "noMappingsForStock": "此股票暫無已審批的新聞。"
   }
 }

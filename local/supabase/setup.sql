@@ -545,6 +545,123 @@ alter table public.ey_stocks
     (right(symbol, 3) <> '.HK'
       and market = 'US' and currency = 'USD')
   );
+
+-- ============================================================================
+-- Phase 7+ news ingestion + Phase 8 AI analysis — see 0016_news_and_ai.sql
+--
+-- Three tables:
+--   ey_news_article         — raw RSS articles, deduped by source_url
+--   ey_news_stock_mapping   — junction: article <-> stock + AI impact analysis
+--   ey_stock_relationship   — stock <-> stock knowledge graph (supplier /
+--                              competitor / customer / partner / parent_subsidiary)
+-- All three are append-only. Worker writes status='pending'; admin flips to
+-- 'approved' | 'rejected' to make rows canonical. Public RLS exposes only
+-- approved rows for the AI tables (so unverified LLM output doesn't leak).
+-- ============================================================================
+
+create table if not exists public.ey_news_article (
+  id            uuid primary key default gen_random_uuid(),
+  source_url    text not null unique,
+  source_name   text not null,
+  title         text not null,
+  summary       text,
+  published_at  timestamptz,
+  fetched_at    timestamptz not null default now(),
+  language      text not null default 'en' check (language in ('en')),
+  raw_metadata  jsonb,
+  created_at    timestamptz not null default now(),
+  source        text not null default 'rss'
+);
+
+create index if not exists idx_ey_news_article_published_at
+  on public.ey_news_article (published_at desc);
+create index if not exists idx_ey_news_article_source_name
+  on public.ey_news_article (source_name, published_at desc);
+create index if not exists idx_ey_news_article_fetched_at
+  on public.ey_news_article (fetched_at desc);
+
+create table if not exists public.ey_news_stock_mapping (
+  id                  uuid primary key default gen_random_uuid(),
+  article_id          uuid not null
+                        references public.ey_news_article(id) on delete cascade,
+  stock_id            uuid not null
+                        references public.ey_stocks(id) on delete cascade,
+  sentiment           text check (sentiment in ('bullish','bearish','neutral')),
+  impact_direction    text check (impact_direction in ('positive','negative','mixed','none')),
+  impact_severity     text check (impact_severity in ('low','medium','high','critical')),
+  confidence          numeric(4,3) check (confidence >= 0 and confidence <= 1),
+  rationale           text,
+  status              text not null default 'pending'
+                        check (status in ('pending','approved','rejected')),
+  approved_by         text,
+  approved_at         timestamptz,
+  reviewer_notes      text,
+  created_at          timestamptz not null default now(),
+  source              text not null default 'openrouter'
+);
+
+create unique index if not exists uq_ey_news_stock_mapping_article_stock
+  on public.ey_news_stock_mapping (article_id, stock_id);
+create index if not exists idx_ey_news_stock_mapping_status_pending
+  on public.ey_news_stock_mapping (created_at desc)
+  where status = 'pending';
+create index if not exists idx_ey_news_stock_mapping_stock_approved
+  on public.ey_news_stock_mapping (stock_id, created_at desc)
+  where status = 'approved';
+
+create table if not exists public.ey_stock_relationship (
+  id                  uuid primary key default gen_random_uuid(),
+  source_stock_id     uuid not null
+                        references public.ey_stocks(id) on delete cascade,
+  target_stock_id     uuid not null
+                        references public.ey_stocks(id) on delete cascade,
+  relationship_type   text not null
+                        check (relationship_type in ('supplier','competitor','customer','partner','parent_subsidiary')),
+  confidence          numeric(4,3) check (confidence >= 0 and confidence <= 1),
+  rationale           text,
+  evidence_news_id    uuid
+                        references public.ey_news_article(id) on delete set null,
+  status              text not null default 'pending'
+                        check (status in ('pending','approved','rejected')),
+  approved_by         text,
+  approved_at         timestamptz,
+  reviewer_notes      text,
+  created_at          timestamptz not null default now(),
+  source              text not null default 'openrouter',
+  check (source_stock_id <> target_stock_id)
+);
+
+create unique index if not exists uq_ey_stock_relationship_pair_type
+  on public.ey_stock_relationship (source_stock_id, target_stock_id, relationship_type);
+create index if not exists idx_ey_stock_relationship_status_pending
+  on public.ey_stock_relationship (created_at desc)
+  where status = 'pending';
+create index if not exists idx_ey_stock_relationship_source_approved
+  on public.ey_stock_relationship (source_stock_id, relationship_type)
+  where status = 'approved';
+create index if not exists idx_ey_stock_relationship_target_approved
+  on public.ey_stock_relationship (target_stock_id, relationship_type)
+  where status = 'approved';
+
+alter table public.ey_news_article       enable row level security;
+alter table public.ey_news_stock_mapping enable row level security;
+alter table public.ey_stock_relationship enable row level security;
+
+drop policy if exists ey_news_article_select_public on public.ey_news_article;
+create policy ey_news_article_select_public
+  on public.ey_news_article for select
+  using (true);
+
+drop policy if exists ey_news_stock_mapping_select_approved on public.ey_news_stock_mapping;
+create policy ey_news_stock_mapping_select_approved
+  on public.ey_news_stock_mapping for select
+  using (status = 'approved');
+
+drop policy if exists ey_stock_relationship_select_approved on public.ey_stock_relationship;
+create policy ey_stock_relationship_select_approved
+  on public.ey_stock_relationship for select
+  using (status = 'approved');
+
 -- ============================================================================
 -- EyesInvest — Phase 1 seed data
 --

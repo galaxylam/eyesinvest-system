@@ -439,5 +439,21 @@
     "deleteConfirm": "确定删除此股票?",
     "signedInAs": "已登录为管理员",
     "signOut": "退出"
+  },
+  "newsPage": {
+    "title": "新闻",
+    "subtitle": "由管理员审批的 AI 新闻分析及股票关系图。",
+    "empty": "暂无已审批的新闻。新文章将于管理员完成审批后显示。",
+    "sections": {
+      "recentImpact": "最新影响分析",
+      "knowledgeGraph": "知识图谱 — 最新关系"
+    },
+    "viewSource": "查看来源 →",
+    "openAdmin": "打开管理员审批 →",
+    "rationaleLabel": "原因",
+    "publishedLabel": "发布时间",
+    "confidenceLabel": "置信度",
+    "perStock": "{symbol} 相关",
+    "noMappingsForStock": "此股票暂无已审批的新闻。"
   }
 }

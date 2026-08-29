@@ -5,14 +5,16 @@ Built as a Next.js monorepo with a local Python analytics engine, Supabase
 shared data layer, and dark-first UI supporting English / Traditional Chinese
 (繁體) / Simplified Chinese (简体).
 
-> **Status:** Phase 3 — Analytics.
+> **Status:** Phase 3 — Analytics + Phase 7 (news ingestion) + Phase 8 (AI analysis).
 > Phase 1 shipped the foundation: bilingual public site, admin CRUD, Supabase
 > schema. Phase 2 added daily OHLC + quote snapshots via a Python yfinance
 > worker (real prices on stock detail and dashboard Top Movers). Phase 3
 > adds computed technical indicators (MA / RSI / MACD / volatility / returns)
 > and reference index quotes (SPX, HSI) on every stock detail page and the
-> dashboard Market Summary tiles. AI mapping, news crawling, and deployment
-> are intentionally deferred to later phases.
+> dashboard Market Summary tiles. Phase 7 + 8 ship `sync-news` (RSS → OpenRouter
+> analysis → pending rows for admin approval via `apps/admin/news` +
+> `/relationships`). Deployment to Vercel is in place; real-time streaming,
+> sector-level relative strength, and public user accounts remain deferred.
 
 ---
 
@@ -96,6 +98,23 @@ boots a stack matching `config.toml` on ports 54321/54322/54323, then
 `supabase db reset` applies migrations + seed. The apps pick it up via
 `http://127.0.0.1:54321`. Not required if you're on a hosted project.
 
+## Phase 7 + 8 deliverable map
+
+| Feature | Where |
+|---|---|
+| News tables (article + 2 AI tables) + RLS | `local/supabase/migrations/0016_news_and_ai.sql` |
+| News + AI TS types | `packages/types/src/{newsArticle,aiMapping}.ts` |
+| Worker `sync-news` (RSS + OpenRouter) | `workers/yfinance/src/eyesinvest_worker/providers/news.py` |
+| News Pydantic models + db helpers | `workers/yfinance/src/eyesinvest_worker/{models,db/supabase}.py` |
+| Worker config (`NEWS_*`, `OPENROUTER_*`) | `workers/yfinance/src/eyesinvest_worker/config.py` |
+| Worker CLI subcommand + `sync_all` aggregator | `workers/yfinance/src/eyesinvest_worker/cli.py` |
+| Worker tests (pure-Python) | `workers/yfinance/tests/test_news.py` |
+| Admin news queue (list + review + actions) | `apps/admin/src/app/(authed)/news/{page.tsx,[id]/page.tsx,actions.ts}` |
+| Admin relationships queue | `apps/admin/src/app/(authed)/relationships/{page.tsx,[id]/page.tsx,actions.ts}` |
+| Admin queue components | `apps/admin/src/components/{NewsMappingQueueTable,NewsReviewForm,RelationshipQueueTable,RelationshipReviewForm}.tsx` |
+| Admin queries + mock fallback | `apps/admin/src/lib/news/{admin-queries,mock-data}.ts` |
+| Ops docs | `workers/yfinance/SYNC_NEWS.md` + `docs/OPERATIONS.md` Phase 7/8 sections |
+
 ## Phase 3 deliverable map
 
 | Feature | Where |
@@ -151,8 +170,8 @@ and the project-wide operations runbook at `docs/OPERATIONS.md`.
 
 Minute / intraday bars, Trigger.dev orchestration, real-time WebSocket
 streaming, sector-level relative strength, volume efficiency / crowded
-ratio metrics, proprietary rankings, news crawling, OpenRouter AI mapping,
-Supabase Realtime streaming, public user accounts, deployment to Vercel.
+ratio metrics (only the green/red share is shipped), proprietary
+rankings, Supabase Realtime streaming, public user accounts.
 
 ## Environment variables
 

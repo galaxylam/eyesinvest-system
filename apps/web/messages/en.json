@@ -439,5 +439,21 @@
     "deleteConfirm": "Delete this stock?",
     "signedInAs": "Signed in as Admin",
     "signOut": "Sign out"
+  },
+  "newsPage": {
+    "title": "News",
+    "subtitle": "AI-curated news and knowledge-graph edges, approved by the admin team.",
+    "empty": "No approved news yet. New articles appear here once the admin queue clears.",
+    "sections": {
+      "recentImpact": "Recent impact analysis",
+      "knowledgeGraph": "Knowledge graph — recent edges"
+    },
+    "viewSource": "View source →",
+    "openAdmin": "Open admin queue →",
+    "rationaleLabel": "Why",
+    "publishedLabel": "Published",
+    "confidenceLabel": "Confidence",
+    "perStock": "For {symbol}",
+    "noMappingsForStock": "No approved news for this stock yet."
   }
 }
