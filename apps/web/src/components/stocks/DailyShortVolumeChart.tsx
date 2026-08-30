@@ -161,7 +161,10 @@ export function DailyShortVolumeChart({
     // ===== US: Daily Reg-SHO histogram (% of volume, 0–100%) =====
     if (sale.length > 0) {
       const hist = chart.addHistogramSeries({
-        priceFormat: { type: 'price', precision: 1, minMove: 0.1 },
+        // `type: 'percent'` formats tick labels as "50.0%" instead of
+        // the default "price" formatter ("$50.00"), so the y-axis reads
+        // as a ratio rather than a price.
+        priceFormat: { type: 'percent', precision: 1, minMove: 0.1 },
         priceScaleId: 'shortPct',
         color: '#10b981',
       });
@@ -179,9 +182,10 @@ export function DailyShortVolumeChart({
       chart.priceScale('shortPct').applyOptions({
         scaleMargins: { top: 0.05, bottom: 0.05 },
         borderVisible: false,
-        // Force the 0–100% scale so a quiet stock's tiny bars don't get
-        // auto-scaled up and visually overstate the activity.
-        autoScale: false,
+        // Lightweight-charts needs autoScale on for the percent scale to
+        // render its tick labels. Without it, the scale has no range to
+        // pick intervals from and shows nothing on the y-axis.
+        autoScale: true,
       });
       hist.applyOptions({
         priceLineVisible: false,
