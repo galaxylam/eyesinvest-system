@@ -225,6 +225,11 @@ export interface ShortSelling {
   shortInterestChangePct: number | null;
   /** Latest short interest ÷ 30-day avg daily volume (trading days). Null when avg is 0. */
   daysToCover: number | null;
+  /** Shares outstanding (float denominator for the accumulated-short
+   *  %-of-float chart). Null when fundamentals haven't shipped — the chart
+   *  degrades to a "Shares outstanding unavailable" state rather than
+   *  drawing a misleading ratio. */
+  sharesOutstanding: number | null;
   asOfDate: string | null;
   series: {
     sale: ShortSellingPoint[];

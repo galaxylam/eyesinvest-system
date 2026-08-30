@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef } from 'react';
 import {
   ColorType,
   CrosshairMode,
-  LineStyle,
   createChart,
   type IChartApi,
   type ISeriesApi,
@@ -13,7 +12,7 @@ import {
 import { useTranslations } from 'next-intl';
 import type { ShortSelling } from '@/lib/stocks/queries';
 
-interface ShortSellingChartProps {
+interface DailyShortVolumeChartProps {
   data: ShortSelling | null;
   /** Optional sync from the parent PriceChart's visible-range subscription. */
   visibleRange?: { from: string; to: string } | null;
@@ -21,8 +20,8 @@ interface ShortSellingChartProps {
 }
 
 // Threshold above which today's short % is rendered rose rather than emerald.
-// 50% is the eyeballed "elevated" line — matches CrowdedRatioChart's color
-// language so a user trained on that subplot doesn't need a new mental model.
+// 50% is the eyeballed "elevated" line — matches the prior chart's color
+// language so a user trained on it doesn't need a new mental model.
 const ELEVATED_PCT = 50;
 
 // HK-only: AM share-of-full-day threshold above which the ratio pill tints
@@ -48,32 +47,35 @@ function formatSharesCompact(value: number | null): string {
 }
 
 /**
- * US short-selling subplot under the main PriceChart. Two layers:
+ * Daily short-selling subplot under the main PriceChart. Y-axis is the
+ * ratio of today's short volume to today's total trading volume
+ * (shortPctOfVolume = shortVolume / totalVolume × 100) for US stocks.
  *
- *   1. Histogram of daily Reg-SHO short % of volume on the secondary
+ * Two layers:
+ *
+ *   1. US: Histogram of daily Reg-SHO short % of volume on the secondary
  *      right scale (0–100%). Emerald below 50%, rose at-or-above.
- *   2. Bi-weekly short-interest line (shares outstanding) on the primary
- *      right scale. Sparse points are connected by the line — FINRA only
- *      publishes bi-weekly settlement snapshots.
+ *   2. HK: Full-day absolute short-volume bars with an AM-session overlay
+ *      (HKEX does not publish total daily volume, so the ratio is null;
+ *      we surface absolute shares instead).
  *
- * Header pills surface the latest daily + bi-weekly KPIs without
- * crowding the chart.
+ * Header pills surface today's ratio + today's short-volume amount + the
+ * HK-only AM session KPIs.
  *
  * The chart is locked to the Range picker — no drag/zoom — so it stays
  * in sync with PriceChart + the other subplots.
  *
  * HK stocks and other no-data cases fall through to the dashed empty state.
  */
-export function ShortSellingChart({
+export function DailyShortVolumeChart({
   data,
   visibleRange,
   height = 200,
-}: ShortSellingChartProps) {
-  const t = useTranslations('stock.charts.shortSelling');
+}: DailyShortVolumeChartProps) {
+  const t = useTranslations('stock.charts.dailyShort');
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const histRef = useRef<ISeriesApi<'Histogram'> | null>(null);
-  const lineRef = useRef<ISeriesApi<'Line'> | null>(null);
   const hkFullDayRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const hkAmRef = useRef<ISeriesApi<'Histogram'> | null>(null);
 
@@ -123,21 +125,10 @@ export function ShortSellingChart({
     [data?.series.sale, isHK],
   );
 
-  // Bi-weekly short-interest points in ascending order. Sparse is fine —
-  // the line connects gaps between settlement dates.
-  const interest = useMemo(
-    () =>
-      (data?.series.interest ?? []).map((p) => ({
-        time: p.date as Time,
-        value: p.shortInterest,
-      })),
-    [data?.series.interest],
-  );
-
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    if (sale.length === 0 && hkFullDay.length === 0 && hkAm.length === 0 && interest.length === 0) return;
+    if (sale.length === 0 && hkFullDay.length === 0 && hkAm.length === 0) return;
 
     const chart = createChart(container, {
       autoSize: true,
@@ -168,8 +159,6 @@ export function ShortSellingChart({
     chartRef.current = chart;
 
     // ===== US: Daily Reg-SHO histogram (% of volume, 0–100%) =====
-    // Lives on the secondary right scale so it can't conflict with the
-    // bi-weekly share-count line on the primary scale.
     if (sale.length > 0) {
       const hist = chart.addHistogramSeries({
         priceFormat: { type: 'price', precision: 1, minMove: 0.1 },
@@ -194,7 +183,6 @@ export function ShortSellingChart({
         // auto-scaled up and visually overstate the activity.
         autoScale: false,
       });
-      // Anchor the secondary scale to 0–100 once we have data on it.
       hist.applyOptions({
         priceLineVisible: false,
         lastValueVisible: false,
@@ -203,8 +191,7 @@ export function ShortSellingChart({
 
     // ===== HK: Full-day absolute short-volume + AM overlay (own right scale) =====
     // Two histograms share `shortVol` so the AM bar overlays the full-day
-    // bar from the bottom. The primary right scale is free for the bi-weekly
-    // short-interest line below.
+    // bar from the bottom.
     if (hkFullDay.length > 0) {
       const fullDaySeries = chart.addHistogramSeries({
         priceFormat: { type: 'volume' },
@@ -236,49 +223,22 @@ export function ShortSellingChart({
       });
     }
 
-    // ===== Bi-weekly short-interest line (primary right scale) =====
-    // Purple to read as "official regulator filing" data, distinct from
-    // the price line on the main chart above.
-    if (interest.length > 0) {
-      const line = chart.addLineSeries({
-        color: '#a78bfa',
-        lineWidth: 2,
-        lineStyle: LineStyle.Solid,
-        priceLineVisible: false,
-        lastValueVisible: false,
-        crosshairMarkerVisible: true,
-        crosshairMarkerRadius: 4,
-        crosshairMarkerBorderColor: '#a78bfa',
-        crosshairMarkerBackgroundColor: '#a78bfa',
-        pointMarkersVisible: true,
-        pointMarkersRadius: 3,
-      });
-      lineRef.current = line;
-      line.setData(interest);
-    }
-
     chart.timeScale().fitContent();
 
     return () => {
       chart.remove();
       chartRef.current = null;
       histRef.current = null;
-      lineRef.current = null;
       hkFullDayRef.current = null;
       hkAmRef.current = null;
     };
-  }, [sale, interest, hkFullDay, hkAm, height]);
+  }, [sale, hkFullDay, hkAm, height]);
 
   // Keep this subplot's visible window synced with the main chart's.
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
-    if (
-      sale.length === 0 &&
-      hkFullDay.length === 0 &&
-      hkAm.length === 0 &&
-      interest.length === 0
-    ) {
+    if (sale.length === 0 && hkFullDay.length === 0 && hkAm.length === 0) {
       return;
     }
     if (visibleRange != null) {
@@ -289,7 +249,7 @@ export function ShortSellingChart({
     } else {
       chart.timeScale().fitContent();
     }
-  }, [visibleRange, sale, hkFullDay, hkAm, interest]);
+  }, [visibleRange, sale, hkFullDay, hkAm]);
 
   // ----- Empty states -----
   // No data at all (e.g. unsupported market, stock not in universe).
@@ -303,14 +263,11 @@ export function ShortSellingChart({
       </div>
     );
   }
-  // Stock returned but the worker hasn't shipped any rows yet — different
-  // per-market so we surface a quiet "noFloat" rather than the chart frame.
+  // Stock returned but the worker hasn't shipped any rows yet.
   const hasAnyData =
-    (data.market === 'HK'
-      ? data.todayShortVolume != null ||
-        data.todayAmShortVolume != null ||
-        data.shortInterest != null
-      : data.todayShortPctOfVolume != null || data.shortInterest != null);
+    data.market === 'HK'
+      ? data.todayShortVolume != null || data.todayAmShortVolume != null
+      : data.todayShortPctOfVolume != null;
   if (!hasAnyData) {
     return (
       <div
@@ -329,15 +286,6 @@ export function ShortSellingChart({
       : todayPct >= ELEVATED_PCT
         ? 'text-rose-500'
         : 'text-emerald-500';
-  const changePct = data.shortInterestChangePct;
-  const changeTone =
-    changePct == null
-      ? 'text-fg-subtle'
-      : changePct > 0
-        ? 'text-rose-500'
-        : changePct < 0
-          ? 'text-emerald-500'
-          : 'text-fg-subtle';
 
   return (
     <section className="rounded-md border border-border bg-bg-elevated">
@@ -391,25 +339,6 @@ export function ShortSellingChart({
                   })}
                 </span>
               )}
-            </div>
-          )}
-          {/* Bi-weekly KPI — latest short-interest (outstanding shares). */}
-          {data.shortInterest != null && (
-            <div className="flex items-baseline gap-1.5 border-l border-border pl-4">
-              <span className="text-2xs text-fg-subtle">{t('shortInt')}</span>
-              <span className="tabular font-mono text-xs font-medium text-fg">
-                {formatSharesCompact(data.shortInterest)}
-              </span>
-            </div>
-          )}
-          {/* Bi-weekly KPI — change vs prior settlement. */}
-          {changePct != null && (
-            <div className="flex items-baseline gap-1.5 border-l border-border pl-4">
-              <span className="text-2xs text-fg-subtle">{t('change')}</span>
-              <span className={`tabular font-mono text-xs font-medium ${changeTone}`}>
-                {changePct > 0 ? '+' : ''}
-                {changePct.toFixed(1)}%
-              </span>
             </div>
           )}
         </div>

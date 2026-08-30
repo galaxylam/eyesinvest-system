@@ -930,6 +930,7 @@ export function getMockShortSelling(symbol: string): ShortSelling | null {
       shortInterest: null,
       shortInterestChangePct: null,
       daysToCover: null,
+      sharesOutstanding: getMockFundamentals(symbol)?.sharesOutstanding ?? null,
       asOfDate: null,
       series: { sale: [], interest: [] },
     } satisfies ShortSelling;
@@ -1011,6 +1012,7 @@ export function getMockShortSelling(symbol: string): ShortSelling | null {
     shortInterest: latestInterest?.shortInterest ?? null,
     shortInterestChangePct: latestInterest?.changePct ?? null,
     daysToCover: latestInterest?.daysToCover ?? null,
+    sharesOutstanding: getMockFundamentals(symbol)?.sharesOutstanding ?? null,
     asOfDate: latestSale?.date ?? latestInterest?.date ?? null,
     series: { sale, interest },
   } satisfies ShortSelling;

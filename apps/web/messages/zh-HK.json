@@ -325,21 +325,27 @@
       "supportHint": "最近 20 個交易日中,成交量最大日子的收盤價"
     },
     "charts": {
-      "shortSelling": {
-        "title": "放空分析",
-        "subtitle": "放空持倉，與主圖時間區間同步",
+      "dailyShort": {
+        "title": "每日放空",
+        "subtitle": "今日放空量 ÷ 今日總成交量",
         "today": "今日 %",
         "dailyAmount": "今日量",
-        "shortInt": "放空持倉",
-        "change": "較前期",
-        "elevated": "偏高",
-        "normal": "正常",
         "empty": "此股票暫無放空資料。",
         "noFloat": "尚未有放空資料。",
         "amSession": "上午",
         "amVol": "上午短倉量",
-        "amHkd": "上午短倉金額",
         "amRatio": "上午佔全日 {pct}"
+      },
+      "accumulatedShort": {
+        "title": "累計放空",
+        "subtitle": "放空持倉 ÷ 總流通股數",
+        "pctOfFloat": "放空佔比",
+        "shortInt": "放空持倉",
+        "change": "較前期",
+        "dtc": "軋空天數",
+        "empty": "此股票暫無放空資料。",
+        "noFloat": "尚未有放空資料。",
+        "noSharesOutstanding": "此股票暫無流通股數資料。"
       },
       "volumeEfficiency": {
         "title": "量價效率",

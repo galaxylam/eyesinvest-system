@@ -325,21 +325,27 @@
       "supportHint": "最近 20 个交易日中,成交量最大日子的收盘价"
     },
     "charts": {
-      "shortSelling": {
-        "title": "做空分析",
-        "subtitle": "做空持仓，与主图时间区间同步",
+      "dailyShort": {
+        "title": "每日做空",
+        "subtitle": "今日做空量 ÷ 今日总成交量",
         "today": "今日 %",
         "dailyAmount": "今日量",
-        "shortInt": "做空持仓",
-        "change": "较前期",
-        "elevated": "偏高",
-        "normal": "正常",
         "empty": "暂无该股做空数据。",
         "noFloat": "尚无做空数据。",
         "amSession": "上午",
         "amVol": "上午短仓量",
-        "amHkd": "上午短仓金额",
         "amRatio": "上午占全日 {pct}"
+      },
+      "accumulatedShort": {
+        "title": "累计做空",
+        "subtitle": "做空持仓 ÷ 总流通股数",
+        "pctOfFloat": "做空占比",
+        "shortInt": "做空持仓",
+        "change": "较前期",
+        "dtc": "轧空天数",
+        "empty": "暂无该股做空数据。",
+        "noFloat": "尚无做空数据。",
+        "noSharesOutstanding": "暂无该股流通股数数据。"
       },
       "volumeEfficiency": {
         "title": "量价效率",

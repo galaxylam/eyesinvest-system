@@ -325,21 +325,27 @@
       "supportHint": "Close on the highest-volume day in the last 20 trading days"
     },
     "charts": {
-      "shortSelling": {
-        "title": "Short selling",
-        "subtitle": "Short interest synced with the main chart's range",
+      "dailyShort": {
+        "title": "Daily short selling",
+        "subtitle": "Today's short volume ÷ today's total volume",
         "today": "Today %",
         "dailyAmount": "Today vol",
-        "shortInt": "Short int",
-        "change": "Δ from prior",
-        "elevated": "Elevated",
-        "normal": "Normal",
         "empty": "Short-selling data is not available for this symbol.",
         "noFloat": "No short-selling data yet.",
         "amSession": "Morning session",
         "amVol": "AM short vol",
-        "amHkd": "AM short HKD",
         "amRatio": "AM = {pct} of day"
+      },
+      "accumulatedShort": {
+        "title": "Accumulated short position",
+        "subtitle": "Short interest ÷ total shares outstanding",
+        "pctOfFloat": "Float shorted",
+        "shortInt": "Short int",
+        "change": "Δ from prior",
+        "dtc": "Days to cover",
+        "empty": "Short-selling data is not available for this symbol.",
+        "noFloat": "No short-selling data yet.",
+        "noSharesOutstanding": "Shares outstanding unavailable for this symbol."
       },
       "volumeEfficiency": {
         "title": "Volume efficiency",

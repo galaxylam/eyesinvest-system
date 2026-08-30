@@ -7,7 +7,8 @@ import type { CrowdedRatio, ShortSelling, VolumeEfficiency } from '@/lib/stocks/
 import { PriceChart } from './PriceChart';
 import { VolumeEfficiencyChart } from './VolumeEfficiencyChart';
 import { CrowdedRatioChart } from './CrowdedRatioChart';
-import { ShortSellingChart } from './ShortSellingChart';
+import { DailyShortVolumeChart } from './DailyShortVolumeChart';
+import { AccumulatedShortPositionChart } from './AccumulatedShortPositionChart';
 
 interface StockChartStackProps {
   symbol: string;
@@ -93,7 +94,12 @@ export function StockChartStack({
         height={subchartHeight}
         visibleRange={visibleRange}
       />
-      <ShortSellingChart
+      <DailyShortVolumeChart
+        data={shortSelling}
+        height={subchartHeight}
+        visibleRange={visibleRange}
+      />
+      <AccumulatedShortPositionChart
         data={shortSelling}
         height={subchartHeight}
         visibleRange={visibleRange}

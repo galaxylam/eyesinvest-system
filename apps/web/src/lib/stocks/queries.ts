@@ -1775,13 +1775,17 @@ export async function getShortSelling(
     async (supabase) => {
       const { data: stockRow, error: stockErr } = await supabase
         .from('ey_stocks')
-        .select('id, symbol, market')
+        .select('id, symbol, market, shares_outstanding')
         .eq('symbol', normalized)
         .maybeSingle();
       if (stockErr) throw stockErr;
       if (!stockRow) return null;
 
       const stockId = stockRow.id;
+      const sharesOutstanding =
+        stockRow.shares_outstanding == null
+          ? null
+          : Number(stockRow.shares_outstanding);
 
       // Three parallel reads: daily sale (full-day + AM) + bi-weekly interest
       // + 30d volume for days-to-cover.
@@ -1902,6 +1906,7 @@ export async function getShortSelling(
         shortInterest: latestInterest?.shortInterest ?? null,
         shortInterestChangePct: latestInterest?.changePct ?? null,
         daysToCover: latestInterest?.daysToCover ?? null,
+        sharesOutstanding,
         asOfDate,
         series: { sale, interest },
       } satisfies ShortSelling;
