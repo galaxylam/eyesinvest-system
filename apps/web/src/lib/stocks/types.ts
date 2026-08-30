@@ -165,18 +165,21 @@ export interface CrowdedRatio {
 
 /**
  * One bar on the daily short-selling chart.
- *   shortPctOfVolume = short_volume / total_volume × 100  (US only — null for HK)
+ *   shortPctOfVolume = shortVolume / totalVolume × 100
  *
- * For HK rows, `shortVolume` and `amShortVolume` are absolute HKEX shares,
- * and `totalVolume` is always 0 (HKEX does not publish total daily volume).
+ * For US rows, totalVolume comes from FINRA's Reg-SHO daily file. For HK
+ * rows, totalVolume is sourced from `ey_price_1d.volume` (HKEX doesn't
+ * publish total daily volume in its short-sale table, but the price series
+ * gives the same number) so shortPctOfVolume is computed for both markets
+ * and the y-axis is uniform.
  */
 export interface ShortSellingPoint {
   date: string;
-  /** shortVolume / totalVolume × 100. Null when totalVolume is 0. */
+  /** shortVolume / totalVolume × 100. Null when totalVolume is unknown. */
   shortPctOfVolume: number | null;
   /** FINRA-reported short volume (US) or HKEX-reported full-day short volume (HK). */
   shortVolume: number;
-  /** FINRA-reported total volume (US only; HKEX doesn't publish this). */
+  /** Total daily volume: FINRA for US, `ey_price_1d.volume` for HK. 0 when unknown. */
   totalVolume: number;
   /** HKEX morning-session short volume. Null until ~12:30 HKT, null for US. */
   amShortVolume: number | null;
@@ -219,6 +222,11 @@ export interface ShortSelling {
   todayAmShortValueHkd: number | null;
   /** HK-only. AM share of today's full-day turnover (0..100). Null until full-day is published. */
   todayAmPctOfFullDay: number | null;
+  /** Total volume for the latest trading day — the denominator used to
+   *  compute `todayShortPctOfVolume`. Needed by the HK AM pill which
+   *  surfaces the AM share as a % of today's total volume. Null when
+   *  no daily data. */
+  todayTotalVolume: number | null;
   /** Latest short interest (shares outstanding). Null when no bi-weekly data. */
   shortInterest: number | null;
   /** Change vs prior settlement, signed percent. Null when no prior. */

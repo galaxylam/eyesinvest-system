@@ -927,6 +927,7 @@ export function getMockShortSelling(symbol: string): ShortSelling | null {
       todayAmShortVolume: null,
       todayAmShortValueHkd: null,
       todayAmPctOfFullDay: null,
+      todayTotalVolume: null,
       shortInterest: null,
       shortInterestChangePct: null,
       daysToCover: null,
@@ -939,13 +940,16 @@ export function getMockShortSelling(symbol: string): ShortSelling | null {
   // Per-day shortPctOfVolume derived from the symbol's seeded RNG so
   // values are deterministic. We anchor on 30-50% — a believable range
   // for active US equities — and let the seed drive the variance.
+  //
+  // HKEX daily page only publishes short volume + HKD turnover, not
+  // total daily volume. The query path fills that gap with
+  // `ey_price_1d.volume` so the y-axis can be a uniform % of total
+  // volume across markets. The mock mirrors the same shape — HK rows
+  // use the synthetic price series volume as `totalVolume` so the
+  // chart computes a non-null `shortPctOfVolume` for HK too.
   const rng = makeRng(symbolSeed(`${symbol}-shorts`));
   const sale: ShortSellingPoint[] = bars.map((b) => {
     const total = b.volume;
-    // HKEX daily page only publishes short volume + HKD turnover, not
-    // total daily volume — mirror that in the mock so the UI's
-    // derived shortPctOfVolume falls back to "—" for HK.
-    const totalForChart = isHK ? 0 : total;
     const short = Math.floor(total * (30 + rng() * 20) / 100);
     // HK-only AM session: 40–55% of full-day short volume, with a
     // rough HKD turnover proxy derived from the bar's close price.
@@ -955,8 +959,8 @@ export function getMockShortSelling(symbol: string): ShortSelling | null {
     return {
       date: b.time,
       shortVolume: short,
-      totalVolume: totalForChart,
-      shortPctOfVolume: totalForChart > 0 ? +(30 + rng() * 20).toFixed(2) : null,
+      totalVolume: total,
+      shortPctOfVolume: total > 0 ? +(30 + rng() * 20).toFixed(2) : null,
       amShortVolume: amShort,
       amShortValueHkd: amHkd,
     };
@@ -1009,6 +1013,7 @@ export function getMockShortSelling(symbol: string): ShortSelling | null {
     todayAmShortVolume: todayAmVol,
     todayAmShortValueHkd: todayAmHkd,
     todayAmPctOfFullDay: todayAmPct,
+    todayTotalVolume: latestSale?.totalVolume ?? null,
     shortInterest: latestInterest?.shortInterest ?? null,
     shortInterestChangePct: latestInterest?.changePct ?? null,
     daysToCover: latestInterest?.daysToCover ?? null,

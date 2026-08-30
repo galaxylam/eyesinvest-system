@@ -1787,9 +1787,12 @@ export async function getShortSelling(
           ? null
           : Number(stockRow.shares_outstanding);
 
-      // Three parallel reads: daily sale (full-day + AM) + bi-weekly interest
-      // + 30d volume for days-to-cover.
-      const [saleRes, interestRes, volumeRes] = await Promise.all([
+      // Four parallel reads: daily sale (full-day + AM) + bi-weekly interest
+      // + 30d volume for days-to-cover + same-window daily volume used as
+      // a HK fallback for `total_volume` (HKEX doesn't publish it in the
+      // short-sale table; we read it from `ey_price_1d` instead so the
+      // y-axis can be a uniform % of total volume across markets).
+      const [saleRes, interestRes, volumeRes, dailyPriceVolumeRes] = await Promise.all([
         supabase
           .from('ey_short_sale_1d')
           .select(
@@ -1811,10 +1814,21 @@ export async function getShortSelling(
           .eq('stock_id', stockId)
           .order('trade_date', { ascending: false })
           .limit(30),
+        // Same `days` window as the sale read so we have a price-series
+        // volume per date for the full chart range, not just the last 30
+        // used for days-to-cover. Chunked reads would be nicer but the
+        // `days` cap (756 in practice) keeps the payload small.
+        supabase
+          .from('ey_price_1d')
+          .select('trade_date, volume')
+          .eq('stock_id', stockId)
+          .order('trade_date', { ascending: false })
+          .limit(days),
       ]);
       if (saleRes.error) throw saleRes.error;
       if (interestRes.error) throw interestRes.error;
       if (volumeRes.error) throw volumeRes.error;
+      if (dailyPriceVolumeRes.error) throw dailyPriceVolumeRes.error;
 
       const num = (v: unknown): number | null =>
         v == null ? null : Number(v);
@@ -1836,6 +1850,17 @@ export async function getShortSelling(
         trade_date: string;
         volume: number;
       }>;
+      // Map of trade_date → total volume for the full chart window. Used
+      // as a HK fallback for `total_volume` so the chart can show a
+      // uniform short-volume % of total-volume y-axis across markets.
+      const dailyPriceVolumeByDate = new Map<string, number>();
+      for (const r of ((dailyPriceVolumeRes.data ?? []) as Array<{
+        trade_date: string;
+        volume: number | null;
+      }>)) {
+        if (r.volume == null) continue;
+        dailyPriceVolumeByDate.set(r.trade_date, Number(r.volume));
+      }
 
       // Avg daily volume over last 30 trading days — used to compute
       // days-to-cover locally. Guard against a degenerate 0-volume mean.
@@ -1845,11 +1870,16 @@ export async function getShortSelling(
         return sum / volumeRaw.length;
       })();
 
-      // Daily series (ascending for chart).
+      // Daily series (ascending for chart). For HK rows where
+      // `ey_short_sale_1d.total_volume` is 0, fall back to the price
+      // series volume for that date so the chart can plot a percent
+      // ratio for both markets.
       const sale: ShortSellingPoint[] = saleRaw
         .map((r) => {
-          const total = Number(r.total_volume);
           const short = Number(r.short_volume);
+          const reportedTotal = Number(r.total_volume);
+          const fallbackTotal = dailyPriceVolumeByDate.get(r.trade_date) ?? 0;
+          const total = reportedTotal > 0 ? reportedTotal : fallbackTotal;
           return {
             date: r.trade_date,
             shortVolume: short,
@@ -1903,6 +1933,7 @@ export async function getShortSelling(
         todayAmShortVolume: todayAmVol,
         todayAmShortValueHkd: todayAmHkd,
         todayAmPctOfFullDay: todayAmPct,
+        todayTotalVolume: latestSale?.totalVolume ?? null,
         shortInterest: latestInterest?.shortInterest ?? null,
         shortInterestChangePct: latestInterest?.changePct ?? null,
         daysToCover: latestInterest?.daysToCover ?? null,

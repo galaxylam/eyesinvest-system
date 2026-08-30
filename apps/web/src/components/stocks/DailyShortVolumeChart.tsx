@@ -24,11 +24,6 @@ interface DailyShortVolumeChartProps {
 // language so a user trained on it doesn't need a new mental model.
 const ELEVATED_PCT = 50;
 
-// HK-only: AM share-of-full-day threshold above which the ratio pill tints
-// amber. 40–55% is normal for the morning session; >60% tilts toward an
-// elevated day and is worth surfacing.
-const ELEVATED_AM_RATIO_PCT = 60;
-
 // HK bar colors — distinct from the US palette so a user can read at a
 // glance which market they're on. Amber = full day, emerald = AM overlay
 // (chosen to read as "partial / provisional" against the amber backdrop).
@@ -48,24 +43,26 @@ function formatSharesCompact(value: number | null): string {
 
 /**
  * Daily short-selling subplot under the main PriceChart. Y-axis is the
- * ratio of today's short volume to today's total trading volume
- * (shortPctOfVolume = shortVolume / totalVolume × 100) for US stocks.
+ * ratio of short volume to total trading volume on each day
+ * (shortPctOfVolume = shortVolume / totalVolume × 100), expressed as a
+ * percent for both US and HK on a single shared right scale.
  *
- * Two layers:
+ * For US, totalVolume comes from FINRA's Reg-SHO daily file. For HK,
+ * HKEX doesn't publish it, so the query layer falls back to
+ * `ey_price_1d.volume` (the same number, just sourced from the price
+ * series). The y-axis is therefore a uniform "what % of today's volume
+ * was short" across markets.
  *
- *   1. US: Histogram of daily Reg-SHO short % of volume on the secondary
- *      right scale (0–100%). Emerald below 50%, rose at-or-above.
- *   2. HK: Full-day absolute short-volume bars with an AM-session overlay
- *      (HKEX does not publish total daily volume, so the ratio is null;
- *      we surface absolute shares instead).
- *
- * Header pills surface today's ratio + today's short-volume amount + the
- * HK-only AM session KPIs.
+ * Two histogram layers share the percent scale:
+ *   1. Full-day bar: shortVolume / totalVolume × 100. Emerald below 50%,
+ *      rose at-or-above.
+ *   2. AM-session overlay (HK only): amShortVolume / totalVolume × 100,
+ *      drawn from the bottom of the full-day bar so the green portion
+ *      visualises what fraction of today's total volume was shorted
+ *      during the morning session.
  *
  * The chart is locked to the Range picker — no drag/zoom — so it stays
  * in sync with PriceChart + the other subplots.
- *
- * HK stocks and other no-data cases fall through to the dashed empty state.
  */
 export function DailyShortVolumeChart({
   data,
@@ -75,51 +72,51 @@ export function DailyShortVolumeChart({
   const t = useTranslations('stock.charts.dailyShort');
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const histRef = useRef<ISeriesApi<'Histogram'> | null>(null);
-  const hkFullDayRef = useRef<ISeriesApi<'Histogram'> | null>(null);
-  const hkAmRef = useRef<ISeriesApi<'Histogram'> | null>(null);
+  const fullDayRef = useRef<ISeriesApi<'Histogram'> | null>(null);
+  const amRef = useRef<ISeriesApi<'Histogram'> | null>(null);
 
   const isHK = data?.market === 'HK';
 
-  // US: daily short-volume % per trading day, ascending.
-  const sale = useMemo(
+  // Full-day bar: shortPctOfVolume per trading day, ascending. Shared
+  // scale across US + HK — the y-axis reads "what % of today's volume
+  // was short" identically on both markets.
+  const fullDay = useMemo(
     () =>
       (data?.series.sale ?? [])
-        .filter((p) => p.shortPctOfVolume != null)
-        .map((p) => ({
-          time: p.date as Time,
-          value: p.shortPctOfVolume as number,
-        })),
-    [data?.series.sale],
-  );
-
-  // HK: full-day short-volume absolute shares, ascending. Filter to > 0 so
-  // the mid-day "AM-only, full-day not yet out" state renders no amber bar.
-  const hkFullDay = useMemo(
-    () =>
-      isHK
-        ? (data?.series.sale ?? [])
-            .filter((p) => p.shortVolume > 0)
-            .map((p) => ({ time: p.date as Time, value: p.shortVolume }))
-        : [],
+        .filter((p) => p.shortPctOfVolume != null && p.shortVolume > 0)
+        .map((p) => {
+          const pct = p.shortPctOfVolume as number;
+          return {
+            time: p.date as Time,
+            value: pct,
+            color:
+              isHK
+                ? HK_FULL_DAY_COLOR
+                : pct >= ELEVATED_PCT
+                  ? 'rgba(244, 63, 94, 0.55)'
+                  : 'rgba(16, 185, 129, 0.55)',
+          };
+        }),
     [data?.series.sale, isHK],
   );
 
-  // HK: morning-session overlay. Only renders when both AM is published
-  // AND full-day has been written (so we have a reference scale); this
-  // prevents a 50K-share AM bar from looking massive on a still-empty day.
-  const hkAm = useMemo(
+  // HK AM-session overlay: amShortVolume / totalVolume × 100. Drawn from
+  // the bottom of the full-day bar so the green portion reads as
+  // "morning share of today's total volume".
+  const am = useMemo(
     () =>
       isHK
         ? (data?.series.sale ?? [])
             .filter(
               (p) =>
                 p.amShortVolume != null &&
-                p.shortVolume > 0,
+                p.shortVolume > 0 &&
+                p.shortPctOfVolume != null &&
+                p.totalVolume > 0,
             )
             .map((p) => ({
               time: p.date as Time,
-              value: p.amShortVolume as number,
+              value: +((p.amShortVolume as number) / p.totalVolume * 100).toFixed(2),
             }))
         : [],
     [data?.series.sale, isHK],
@@ -128,7 +125,7 @@ export function DailyShortVolumeChart({
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    if (sale.length === 0 && hkFullDay.length === 0 && hkAm.length === 0) return;
+    if (fullDay.length === 0 && am.length === 0) return;
 
     const chart = createChart(container, {
       autoSize: true,
@@ -158,78 +155,44 @@ export function DailyShortVolumeChart({
     });
     chartRef.current = chart;
 
-    // ===== US: Daily Reg-SHO histogram (% of volume, 0–100%) =====
-    if (sale.length > 0) {
-      const hist = chart.addHistogramSeries({
-        // `type: 'percent'` formats tick labels as "50.0%" instead of
-        // the default "price" formatter ("$50.00"), so the y-axis reads
-        // as a ratio rather than a price.
+    // Single shared percent scale — full-day bar and AM overlay both
+    // render against it so a 50% full-day bar with a 25% AM overlay
+    // means "half of today's volume was short, half of that happened
+    // before noon".
+    const shortPctScale = chart.priceScale('shortPct');
+    shortPctScale.applyOptions({
+      scaleMargins: { top: 0.05, bottom: 0.05 },
+      borderVisible: false,
+      autoScale: true,
+      // Custom-named scales don't inherit `layout.textColor` —
+      // set it explicitly so the tick labels render in the same
+      // muted-grey the rest of the chart uses.
+      textColor: '#9ca3af',
+    });
+
+    if (fullDay.length > 0) {
+      const fullDaySeries = chart.addHistogramSeries({
         priceFormat: { type: 'percent', precision: 1, minMove: 0.1 },
         priceScaleId: 'shortPct',
         color: '#10b981',
       });
-      histRef.current = hist;
-      hist.setData(
-        sale.map((p) => ({
-          time: p.time,
-          value: p.value,
-          color:
-            p.value >= ELEVATED_PCT
-              ? 'rgba(244, 63, 94, 0.55)'
-              : 'rgba(16, 185, 129, 0.55)',
-        })),
+      fullDayRef.current = fullDaySeries;
+      fullDaySeries.setData(
+        fullDay.map((p) => ({ time: p.time, value: p.value, color: p.color })),
       );
-      chart.priceScale('shortPct').applyOptions({
-        scaleMargins: { top: 0.05, bottom: 0.05 },
-        borderVisible: false,
-        // Lightweight-charts needs autoScale on for the percent scale to
-        // render its tick labels. Without it, the scale has no range to
-        // pick intervals from and shows nothing on the y-axis.
-        autoScale: true,
-        // Custom-named scales ('shortPct', not 'right') don't inherit
-        // `layout.textColor` automatically — set it explicitly so the
-        // tick labels render in the muted-grey color the rest of the
-        // chart uses. Without this the labels are drawn with the
-        // default (near-black) color and disappear into the bg.
-        textColor: '#9ca3af',
-      });
-      hist.applyOptions({
-        priceLineVisible: false,
-        lastValueVisible: false,
-      });
-    }
-
-    // ===== HK: Full-day absolute short-volume + AM overlay (own right scale) =====
-    // Two histograms share `shortVol` so the AM bar overlays the full-day
-    // bar from the bottom.
-    if (hkFullDay.length > 0) {
-      const fullDaySeries = chart.addHistogramSeries({
-        priceFormat: { type: 'volume' },
-        priceScaleId: 'shortVol',
-        color: HK_FULL_DAY_COLOR,
-      });
-      hkFullDayRef.current = fullDaySeries;
-      fullDaySeries.setData(hkFullDay);
-      chart.priceScale('shortVol').applyOptions({
-        scaleMargins: { top: 0.05, bottom: 0.05 },
-        borderVisible: false,
-        // Same textColor fix as the percent scale above — see comment
-        // there for why custom-named scales need it set explicitly.
-        textColor: '#9ca3af',
-      });
       fullDaySeries.applyOptions({
         priceLineVisible: false,
         lastValueVisible: false,
       });
     }
-    if (hkAm.length > 0) {
+    if (am.length > 0) {
       const amSeries = chart.addHistogramSeries({
-        priceFormat: { type: 'volume' },
-        priceScaleId: 'shortVol',
+        priceFormat: { type: 'percent', precision: 1, minMove: 0.1 },
+        priceScaleId: 'shortPct',
         color: HK_AM_COLOR,
       });
-      hkAmRef.current = amSeries;
-      amSeries.setData(hkAm);
+      amRef.current = amSeries;
+      amSeries.setData(am);
       amSeries.applyOptions({
         priceLineVisible: false,
         lastValueVisible: false,
@@ -241,19 +204,16 @@ export function DailyShortVolumeChart({
     return () => {
       chart.remove();
       chartRef.current = null;
-      histRef.current = null;
-      hkFullDayRef.current = null;
-      hkAmRef.current = null;
+      fullDayRef.current = null;
+      amRef.current = null;
     };
-  }, [sale, hkFullDay, hkAm, height]);
+  }, [fullDay, am, height]);
 
   // Keep this subplot's visible window synced with the main chart's.
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
-    if (sale.length === 0 && hkFullDay.length === 0 && hkAm.length === 0) {
-      return;
-    }
+    if (fullDay.length === 0 && am.length === 0) return;
     if (visibleRange != null) {
       chart.timeScale().setVisibleRange({
         from: visibleRange.from as Time,
@@ -262,7 +222,7 @@ export function DailyShortVolumeChart({
     } else {
       chart.timeScale().fitContent();
     }
-  }, [visibleRange, sale, hkFullDay, hkAm]);
+  }, [visibleRange, fullDay, am]);
 
   // ----- Empty states -----
   // No data at all (e.g. unsupported market, stock not in universe).
@@ -278,9 +238,9 @@ export function DailyShortVolumeChart({
   }
   // Stock returned but the worker hasn't shipped any rows yet.
   const hasAnyData =
-    data.market === 'HK'
-      ? data.todayShortVolume != null || data.todayAmShortVolume != null
-      : data.todayShortPctOfVolume != null;
+    data.todayShortPctOfVolume != null ||
+    data.todayShortVolume != null ||
+    data.todayAmShortVolume != null;
   if (!hasAnyData) {
     return (
       <div
@@ -310,7 +270,7 @@ export function DailyShortVolumeChart({
           </span>
         </div>
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-          {/* Daily KPI — today's short-volume ratio (% of FINRA volume). */}
+          {/* Daily KPI — today's short-volume ratio (% of total volume). */}
           {todayPct != null && (
             <div className="flex items-baseline gap-1.5">
               <span className="text-2xs text-fg-subtle">{t('today')}</span>
@@ -328,32 +288,38 @@ export function DailyShortVolumeChart({
               </span>
             </div>
           )}
-          {/* HK-only AM-session KPI — short volume + ratio pill. Tints amber
-              when the AM share of the full day crosses ELEVATED_AM_RATIO_PCT
-              so the user can see disproportionate morning activity before the
-              day's close. */}
-          {data.market === 'HK' && data.todayAmShortVolume != null && (
-            <div className="flex items-baseline gap-1.5 border-l border-border pl-4">
-              <span className="text-2xs text-fg-subtle">{t('amVol')}</span>
-              <span className="tabular font-mono text-xs font-medium text-fg">
-                {formatSharesCompact(data.todayAmShortVolume)}
-              </span>
-              {data.todayAmPctOfFullDay != null && (
-                <span
-                  className={
-                    data.todayAmPctOfFullDay > ELEVATED_AM_RATIO_PCT
-                      ? 'rounded bg-amber-500/20 px-1.5 py-0.5 text-2xs tabular text-amber-400'
-                      : 'rounded bg-bg px-1.5 py-0.5 text-2xs tabular text-fg-muted'
-                  }
-                  title={t('amSession')}
-                >
-                  {t('amRatio', {
-                    pct: `${data.todayAmPctOfFullDay.toFixed(0)}%`,
-                  })}
-                </span>
+          {/* HK AM-session pill — surfaces the AM share as a % of today's
+              total volume so the user sees the same unit the chart is
+              plotted against. Tints amber when the AM share crosses 60%. */}
+          {data.market === 'HK' &&
+              data.todayAmShortVolume != null &&
+              data.todayShortPctOfVolume != null &&
+              data.todayTotalVolume != null &&
+              data.todayTotalVolume > 0 && (
+                <div className="flex items-baseline gap-1.5 border-l border-border pl-4">
+                  <span className="text-2xs text-fg-subtle">{t('amVol')}</span>
+                  <span className="tabular font-mono text-xs font-medium text-fg">
+                    {formatSharesCompact(data.todayAmShortVolume)}
+                  </span>
+                  {(() => {
+                    const amPct = (data.todayAmShortVolume / data.todayTotalVolume) * 100;
+                    return (
+                      <span
+                        className={
+                          amPct > 60
+                            ? 'rounded bg-amber-500/20 px-1.5 py-0.5 text-2xs tabular text-amber-400'
+                            : 'rounded bg-bg px-1.5 py-0.5 text-2xs tabular text-fg-muted'
+                        }
+                        title={t('amSession')}
+                      >
+                        {t('amRatio', {
+                          pct: `${amPct.toFixed(0)}%`,
+                        })}
+                      </span>
+                    );
+                  })()}
+                </div>
               )}
-            </div>
-          )}
         </div>
       </div>
       <div ref={containerRef} className="w-full" style={{ height, touchAction: 'pan-y' }} />
