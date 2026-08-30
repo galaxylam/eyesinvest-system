@@ -159,21 +159,17 @@ export function DailyShortVolumeChart({
     // render against it so a 50% full-day bar with a 25% AM overlay
     // means "half of today's volume was short, half of that happened
     // before noon".
-    const shortPctScale = chart.priceScale('shortPct');
-    shortPctScale.applyOptions({
-      scaleMargins: { top: 0.05, bottom: 0.05 },
-      borderVisible: false,
-      autoScale: true,
-      // Custom-named scales don't inherit `layout.textColor` —
-      // set it explicitly so the tick labels render in the same
-      // muted-grey the rest of the chart uses.
-      textColor: '#9ca3af',
-    });
-
+    //
+    // Use the default 'right' scale (which always exists and inherits
+    // `layout.textColor` automatically) rather than a custom-named
+    // scale — lightweight-charts v4 auto-creates custom scales on
+    // first series add, so calling `applyOptions` on them pre-add is
+    // a no-op and the tick labels end up with the default color and
+    // disappear into the page bg.
     if (fullDay.length > 0) {
       const fullDaySeries = chart.addHistogramSeries({
         priceFormat: { type: 'percent', precision: 1, minMove: 0.1 },
-        priceScaleId: 'shortPct',
+        priceScaleId: 'right',
         color: '#10b981',
       });
       fullDayRef.current = fullDaySeries;
@@ -188,7 +184,7 @@ export function DailyShortVolumeChart({
     if (am.length > 0) {
       const amSeries = chart.addHistogramSeries({
         priceFormat: { type: 'percent', precision: 1, minMove: 0.1 },
-        priceScaleId: 'shortPct',
+        priceScaleId: 'right',
         color: HK_AM_COLOR,
       });
       amRef.current = amSeries;
@@ -198,6 +194,12 @@ export function DailyShortVolumeChart({
         lastValueVisible: false,
       });
     }
+    // Apply scale-margin / borderVisible tweaks AFTER the series are
+    // added so the right scale is guaranteed to exist.
+    chart.priceScale('right').applyOptions({
+      scaleMargins: { top: 0.05, bottom: 0.05 },
+      borderVisible: false,
+    });
 
     chart.timeScale().fitContent();
 
