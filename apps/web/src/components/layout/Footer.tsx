@@ -11,14 +11,7 @@ export async function Footer() {
           {/* lightweight-charts Apache 2.0 attribution: the in-chart logo
               is disabled (see attributionLogo: false in each chart
               component) so we surface the equivalent credit here. */}
-          <a
-            href="https://www.tradingview.com/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:text-fg-muted"
-          >
-            Charts powered by TradingView
-          </a>
+          <span>Charts powered by TradingView</span>
           <p className="tabular">
             {t('updated')} · {new Date().toISOString().slice(0, 10)}
           </p>
