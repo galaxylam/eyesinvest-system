@@ -186,6 +186,12 @@ export function DailyShortVolumeChart({
         // render its tick labels. Without it, the scale has no range to
         // pick intervals from and shows nothing on the y-axis.
         autoScale: true,
+        // Custom-named scales ('shortPct', not 'right') don't inherit
+        // `layout.textColor` automatically — set it explicitly so the
+        // tick labels render in the muted-grey color the rest of the
+        // chart uses. Without this the labels are drawn with the
+        // default (near-black) color and disappear into the bg.
+        textColor: '#9ca3af',
       });
       hist.applyOptions({
         priceLineVisible: false,
@@ -207,6 +213,9 @@ export function DailyShortVolumeChart({
       chart.priceScale('shortVol').applyOptions({
         scaleMargins: { top: 0.05, bottom: 0.05 },
         borderVisible: false,
+        // Same textColor fix as the percent scale above — see comment
+        // there for why custom-named scales need it set explicitly.
+        textColor: '#9ca3af',
       });
       fullDaySeries.applyOptions({
         priceLineVisible: false,
