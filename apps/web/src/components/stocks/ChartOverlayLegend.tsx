@@ -1,6 +1,7 @@
 'use client';
 
 import clsx from 'clsx';
+import type { ReactNode } from 'react';
 
 export type MaKey = 'ma5' | 'ma20' | 'ma50' | 'ma200';
 
@@ -8,6 +9,10 @@ interface ChartOverlayLegendProps {
   visible: Record<MaKey, boolean>;
   onToggle: (key: MaKey) => void;
   labels: Record<MaKey, string>;
+  /** Optional trailing slot — used by PriceChart to slot the support-line
+   *  pill into the same toolbar as the MA pills. Rendered after the MA
+   *  buttons; `null`/omitted = no extra. */
+  extra?: ReactNode;
 }
 
 const COLOR: Record<MaKey, string> = {
@@ -23,7 +28,7 @@ const ORDER: MaKey[] = ['ma5', 'ma20', 'ma50', 'ma200'];
  * Renders three pill buttons above the price chart. Clicking a pill toggles
  * its MA overlay on/off. State is owned by the parent (PriceChart).
  */
-export function ChartOverlayLegend({ visible, onToggle, labels }: ChartOverlayLegendProps) {
+export function ChartOverlayLegend({ visible, onToggle, labels, extra }: ChartOverlayLegendProps) {
   return (
     <div
       role="toolbar"
@@ -57,6 +62,7 @@ export function ChartOverlayLegend({ visible, onToggle, labels }: ChartOverlayLe
           </button>
         );
       })}
+      {extra}
     </div>
   );
 }

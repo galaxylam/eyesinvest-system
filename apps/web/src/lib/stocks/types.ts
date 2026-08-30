@@ -391,6 +391,29 @@ export interface ScreenerFilters {
    *  Rows with `squeezeScore == null` are excluded — there's no synthetic
    *  zero to filter against. */
   squeezeMin?: number;
+  /** Breakout / breakdown filter. The support level is the close on the
+   *  highest-volume trading day within the last 20 sessions.
+   *    * 'breakout'  → keep stocks where T-1 close < support AND T close > support
+   *    * 'breakdown' → keep stocks where T-1 close > support AND T close < support
+   *  Rows with insufficient history (< 2 sessions) are excluded. */
+  breakout?: 'breakout' | 'breakdown';
+}
+
+/**
+ * Per-symbol context computed once per screener request and consumed by
+ * the breakout / breakdown filter. Mirrors the `interestBySymbol` pattern
+ * used for short-interest trends — kept off the `ScreenerRow` type so the
+ * UI never sees it. All three values may be `null` when the symbol has
+ * fewer than two daily bars; the filter should exclude those rows
+ * rather than treat `null` as zero.
+ */
+export interface BreakoutContext {
+  /** Most-recent close (T). */
+  tClose: number | null;
+  /** Previous close (T-1). */
+  tMinus1Close: number | null;
+  /** Close on the highest-volume day within the last 20 sessions. */
+  supportClose: number | null;
 }
 
 export type ScreenerSortColumn =

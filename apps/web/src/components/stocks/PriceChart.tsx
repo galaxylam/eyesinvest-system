@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   createChart,
+  LineStyle,
   type IChartApi,
+  type IPriceLine,
   type ISeriesApi,
   type LineData,
   type Time,
@@ -54,6 +56,16 @@ const DEFAULT_VISIBLE: Record<MaKey, boolean> = {
   ma200: false,
 };
 
+// Look-back window (trading days) used to find the "highest volume day
+// close" — that's what we draw as the dashed support line. 20 matches
+// the screener's breakout/breakdown filter so both views agree on the
+// same threshold value.
+const SUPPORT_WINDOW = 20;
+
+// Accent for the support line + its legend pill. Orange keeps it
+// visually distinct from the MA overlays (pink / amber / blue / violet).
+const SUPPORT_LINE_COLOR = '#fb923c'; // orange-400
+
 /**
  * Candlestick chart for the stock detail page. Prefers the `series` prop
  * when supplied (real OHLC from the yfinance worker); otherwise generates
@@ -77,9 +89,50 @@ export function PriceChart({
   const t = useTranslations('stock');
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const maLineRefs = useRef<Partial<Record<MaKey, ISeriesApi<'Line'>>>>({});
+  // Latest computed support price — kept in a ref so the toggle effect can
+  // (re-)create the price line without rebuilding the chart.
+  const supportPriceRef = useRef<number | null>(null);
+  const supportLineRef = useRef<IPriceLine | null>(null);
 
   const [visible, setVisible] = useState<Record<MaKey, boolean>>(DEFAULT_VISIBLE);
+  // Whether the dashed support line is currently rendered on the chart.
+  const [supportVisible, setSupportVisible] = useState(true);
+  // Mirror `supportVisible` into a ref so the chart-build effect can read
+  // the latest value without needing to re-run on every toggle (we handle
+  // toggling in a separate effect below — see its comment).
+  const supportVisibleRef = useRef(supportVisible);
+  useEffect(() => {
+    supportVisibleRef.current = supportVisible;
+  }, [supportVisible]);
+
+  // Find the highest-volume trading day within the last `SUPPORT_WINDOW`
+  // bars and return its close. `null` when there's no data. Memoised so the
+  // chart effect doesn't have to re-run when the user just toggles the
+  // legend pill.
+  const supportPrice = useMemo<number | null>(() => {
+    const bars = series ?? [];
+    if (bars.length === 0) return null;
+    const window = bars.slice(-SUPPORT_WINDOW);
+    let bestIdx = 0;
+    let bestVol = -Infinity;
+    for (let i = 0; i < window.length; i++) {
+      const v = window[i]?.volume ?? 0;
+      if (v > bestVol) {
+        bestVol = v;
+        bestIdx = i;
+      }
+    }
+    return window[bestIdx]?.close ?? null;
+  }, [series]);
+
+  // Track the latest support price in a ref so the visibility-toggle
+  // effect can (re-)create the price line on the existing chart without
+  // requiring the chart effect to re-run.
+  useEffect(() => {
+    supportPriceRef.current = supportPrice;
+  }, [supportPrice]);
 
   // Build / tear down the chart whenever symbol, height, or the underlying
   // price series changes. MA line series are added here too — visibility
@@ -194,6 +247,7 @@ export function PriceChart({
 
     priceSeries.setData(candleData);
     if (volumeData.length > 0) volumeSeries.setData(volumeData);
+    candleSeriesRef.current = priceSeries;
 
     // Default: fit everything. If the caller asked for a visible window
     // (e.g. ?range=1M), constrain the time scale to the most recent N
@@ -213,12 +267,35 @@ export function PriceChart({
 
     chartRef.current = chart;
 
+    // ===== Dashed support line (highest-volume-20d close) =====
+    // `createPriceLine` mutates the candle series in place — the line is
+    // re-created whenever the underlying `series` changes (this effect
+    // tears the chart down on each rebuild, so we just add it fresh each
+    // time). Visibility is gated by the separate effect below so toggling
+    // the legend pill doesn't force a chart rebuild. We read the
+    // visibility through a ref so this effect's deps stay focused on the
+    // inputs that should actually force a rebuild.
+    if (supportPrice != null && supportVisibleRef.current) {
+      supportLineRef.current = priceSeries.createPriceLine({
+        price: supportPrice,
+        color: SUPPORT_LINE_COLOR,
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: t('chart.support'),
+      });
+    } else {
+      supportLineRef.current = null;
+    }
+
     return () => {
       chart.remove();
       chartRef.current = null;
+      candleSeriesRef.current = null;
       maLineRefs.current = {};
+      supportLineRef.current = null;
     };
-  }, [symbol, height, series, visibleDays]);
+  }, [symbol, height, series, visibleDays, supportPrice, t]);
 
   // Toggle MA line data without recreating the chart.
   useEffect(() => {
@@ -237,6 +314,32 @@ export function PriceChart({
     });
   }, [visible, maSeries]);
 
+  // Toggle the dashed support line without rebuilding the chart.
+  // `series.removePriceLine(line)` is the lightweight-charts way to undo
+  // `series.createPriceLine(...)` — no chart re-creation needed.
+  useEffect(() => {
+    const series = candleSeriesRef.current;
+    const line = supportLineRef.current;
+    if (!series) return;
+    if (line) {
+      series.removePriceLine(line);
+      supportLineRef.current = null;
+    }
+    if (supportVisible) {
+      const price = supportPriceRef.current;
+      if (price != null) {
+        supportLineRef.current = series.createPriceLine({
+          price,
+          color: SUPPORT_LINE_COLOR,
+          lineWidth: 1,
+          lineStyle: LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: t('chart.support'),
+        });
+      }
+    }
+  }, [supportVisible, t]);
+
   const labels: Record<MaKey, string> = {
     ma5: t('chart.ma5'),
     ma20: t('chart.ma20'),
@@ -244,16 +347,47 @@ export function PriceChart({
     ma200: t('chart.ma200'),
   };
 
+  // Single source of truth for the support-pill button. Rendered inside
+  // the MA legend when MAs are available, or inside a standalone toolbar
+  // when the chart falls back to the synthetic series (no MA data).
+  const supportPill = (
+    <button
+      type="button"
+      onClick={() => setSupportVisible((v) => !v)}
+      aria-pressed={supportVisible}
+      title={t('chart.supportHint')}
+      className={
+        'focus-ring inline-flex items-center gap-2 rounded-md border border-border px-2.5 py-1 font-mono text-2xs uppercase tracking-wide transition-opacity ' +
+        (supportVisible
+          ? 'bg-bg-elevated text-fg opacity-100'
+          : 'bg-bg-elevated text-fg-muted opacity-50 hover:opacity-100')
+      }
+    >
+      <span
+        aria-hidden="true"
+        className="inline-block h-2 w-2 rounded-full"
+        style={{
+          backgroundColor: SUPPORT_LINE_COLOR,
+          opacity: supportVisible ? 1 : 0.4,
+        }}
+      />
+      {t('chart.support')}
+    </button>
+  );
+
   return (
     <div className="rounded-md border border-border bg-bg-elevated p-2">
-      {maSeries && (
+      {maSeries ? (
         <ChartOverlayLegend
           visible={visible}
           onToggle={(key) =>
             setVisible((prev) => ({ ...prev, [key]: !prev[key] }))
           }
           labels={labels}
+          extra={supportPill}
         />
+      ) : (
+        <div className="flex items-center gap-2 px-1 pb-2 pt-1">{supportPill}</div>
       )}
       <div ref={containerRef} className="w-full" style={{ height, touchAction: 'pan-y' }} />
     </div>

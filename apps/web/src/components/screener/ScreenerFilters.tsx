@@ -115,6 +115,7 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
     if (gs) params.set('gs', gs); else params.delete('gs');
     const sit = encodeSit(next.shortInterestTrend);
     if (sit) params.set('sit', sit); else params.delete('sit');
+    if (next.breakout) params.set('brk', next.breakout); else params.delete('brk');
 
     const query = params.toString();
     startTransition(() => {
@@ -464,6 +465,22 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
           { value: 'd3', label: t('filter.siDec3') },
         ]}
       />
+      <SelectField
+        label={t('filter.breakout')}
+        value={pendingFilters.breakout ?? ''}
+        onChange={(v) =>
+          setPendingFilters({
+            ...pendingFilters,
+            breakout: v === '' ? undefined : (v as 'breakout' | 'breakdown'),
+          })
+        }
+        disabled={pending}
+        options={[
+          { value: '', label: t('filter.any') },
+          { value: 'breakout', label: t('filter.breakoutUp') },
+          { value: 'breakdown', label: t('filter.breakoutDown') },
+        ]}
+      />
 
       {pending && (
         <span
@@ -581,7 +598,8 @@ function hasAnyFilters(f: ScreenerFilters): boolean {
     f.ma5Trend != null ||
     f.ma20Trend != null ||
     f.greenShareThreshold != null ||
-    f.shortInterestTrend != null
+    f.shortInterestTrend != null ||
+    f.breakout != null
   );
 }
 
@@ -594,7 +612,7 @@ function sameFilters(a: ScreenerFilters, b: ScreenerFilters): boolean {
     'return1mMin', 'return1mMax', 'return3mMax', 'return6mMax',
     'drawdown30dMax', 'volumeEfficiencyMin', 'crowdedRatioMin',
     'crowdedRatioMax', 'squeezeMin', 'ma5Trend', 'ma20Trend',
-    'greenShareThreshold', 'shortInterestTrend',
+    'greenShareThreshold', 'shortInterestTrend', 'breakout',
   ];
   for (const k of keys) {
     const av = a[k];

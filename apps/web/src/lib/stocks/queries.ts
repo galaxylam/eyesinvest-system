@@ -46,6 +46,7 @@ import {
   type MockMoverRow,
 } from './mock-data';
 import type {
+  BreakoutContext,
   CrowdedRatio,
   CrowdedRatioPoint,
   CrowdedRegime,
@@ -1142,7 +1143,7 @@ export async function getScreenerRows(
         idChunks.push(ids.slice(i, i + CHUNK_SIZE));
       }
 
-      const [quotesArr, analyticsArr, interestArr] = await Promise.all([
+      const [quotesArr, analyticsArr, interestArr, pricesArr] = await Promise.all([
         Promise.all(
           idChunks.map((chunk) =>
             supabase.from('ey_quote_snapshot').select(
@@ -1179,13 +1180,29 @@ export async function getScreenerRows(
               .limit(chunk.length * 5),
           ),
         ),
+        // Last 20 trading days of OHLC per stock — drives the
+        // breakout / breakdown filter. ~30 stocks × 20 ≈ 600 rows total,
+        // so chunking isn't strictly required, but it keeps every other
+        // read in this parallel block consistent.
+        // We pull chunk.length * 20 rows so each stock's cap is preserved
+        // regardless of chunking.
+        Promise.all(
+          idChunks.map((chunk) =>
+            supabase.from('ey_price_1d').select(
+              'stock_id, trade_date, close, volume',
+            ).in('stock_id', chunk).order('trade_date', { ascending: false })
+              .limit(chunk.length * 20),
+          ),
+        ),
       ]);
       const quotesRes = { data: quotesArr.flatMap((r) => r.data ?? []), error: mergeErrors(quotesArr.map((r) => r.error)) };
       const analyticsRes = { data: analyticsArr.flatMap((r) => r.data ?? []), error: mergeErrors(analyticsArr.map((r) => r.error)) };
       const interestRes = { data: interestArr.flatMap((r) => r.data ?? []), error: mergeErrors(interestArr.map((r) => r.error)) };
+      const pricesRes = { data: pricesArr.flatMap((r) => r.data ?? []), error: mergeErrors(pricesArr.map((r) => r.error)) };
       if (quotesRes.error) throw quotesRes.error;
       if (analyticsRes.error) throw analyticsRes.error;
       if (interestRes.error) throw interestRes.error;
+      if (pricesRes.error) throw pricesRes.error;
 
       const quoteMap = new Map<string, { last_price: number | null; change: number | null; change_percent: number | null; volume: number | null }>();
       for (const q of (quotesRes.data ?? []) as Array<{ stock_id: string; last_price: number | null; change: number | null; change_percent: number | null; volume: number | null }>) {
@@ -1232,6 +1249,28 @@ export async function getScreenerRows(
         interestBySymbol.set(sym, list);
       }
 
+      // Recent OHLC rows per stock_id (desc-ordered by trade_date). We
+      // only need the last 20 trading days per stock for the breakout
+      // filter; later days are ignored below.
+      const priceRowsByStockId = new Map<string, Array<{ close: number; volume: number }>>();
+      for (const r of (pricesRes.data ?? []) as Array<{
+        stock_id: string; trade_date: string; close: number | null; volume: number | null;
+      }>) {
+        if (r.close == null || r.volume == null) continue;
+        const list = priceRowsByStockId.get(r.stock_id) ?? [];
+        if (list.length < 20) {
+          list.push({ close: Number(r.close), volume: Number(r.volume) });
+          priceRowsByStockId.set(r.stock_id, list);
+        }
+      }
+      // Per-symbol breakout context (T close, T-1 close, support close).
+      const breakoutBySymbol = new Map<string, BreakoutContext>();
+      for (const [stockId, bars] of priceRowsByStockId) {
+        const sym = symbolByStockId.get(stockId);
+        if (sym == null) continue;
+        breakoutBySymbol.set(sym, deriveBreakoutContext(bars));
+      }
+
       const rows: ScreenerRow[] = stockRows.map((s) => {
         const q = quoteMap.get(s.id);
         const a = analyticsMap.get(s.id);
@@ -1269,15 +1308,19 @@ export async function getScreenerRows(
       });
 
       return applyScreenerSort(
-        applyScreenerFilters(rows, filters, interestBySymbol),
+        applyScreenerFilters(rows, filters, interestBySymbol, breakoutBySymbol),
         sort,
       ).slice(0, SCREENER_LIMIT);
     },
-    () =>
-      applyScreenerSort(
-        applyScreenerFilters(getMockScreenerRows(), filters, getMockShortInterestBySymbol()),
+    () => {
+      const mockRows = getMockScreenerRows();
+      const mockInterest = getMockShortInterestBySymbol();
+      const mockBreakout = buildMockBreakoutBySymbol(mockRows.map((r) => r.symbol));
+      return applyScreenerSort(
+        applyScreenerFilters(mockRows, filters, mockInterest, mockBreakout),
         sort,
-      ).slice(0, SCREENER_LIMIT),
+      ).slice(0, SCREENER_LIMIT);
+    },
   );
 }
 
@@ -1528,14 +1571,65 @@ function matchesShortInterestTrend(
   return true;
 }
 
+/** Look-back window (trading days) used to find the support price for the
+ *  breakout / breakdown filter. Mirrors the chart's dashed support line
+ *  so both views agree on the same threshold. */
+const BREAKOUT_WINDOW = 20;
+
+/** Compute the breakout context for one stock from its (desc-ordered) bars.
+ *  Returns `tClose = null` when the stock has < 2 trading days of history
+ *  (the filter then drops the row rather than treating null as zero).
+ *  `supportClose = null` when the window is empty. */
+function deriveBreakoutContext(
+  bars: Array<{ close: number; volume: number }>,
+): BreakoutContext {
+  if (bars.length === 0) {
+    return { tClose: null, tMinus1Close: null, supportClose: null };
+  }
+  const tClose = bars[0]?.close ?? null;
+  const tMinus1Close = bars[1]?.close ?? null;
+  const window = bars.slice(0, BREAKOUT_WINDOW);
+  let supportIdx = 0;
+  let supportVol = -Infinity;
+  for (let i = 0; i < window.length; i++) {
+    const v = window[i]?.volume ?? 0;
+    if (v > supportVol) {
+      supportVol = v;
+      supportIdx = i;
+    }
+  }
+  const supportClose = window[supportIdx]?.close ?? null;
+  return { tClose, tMinus1Close, supportClose };
+}
+
+/** Build the per-symbol breakout map for the mock screener path. Mirrors
+ *  the Supabase-side `deriveBreakoutContext` so mock and real backends
+ *  produce identical filter behaviour. */
+function buildMockBreakoutBySymbol(symbols: string[]): Map<string, BreakoutContext> {
+  const out = new Map<string, BreakoutContext>();
+  for (const sym of symbols) {
+    const series = getMockPriceSeries(sym, BREAKOUT_WINDOW);
+    if (!series) {
+      out.set(sym, { tClose: null, tMinus1Close: null, supportClose: null });
+      continue;
+    }
+    // Mock series is asc-ordered; flip to desc to match `ey_price_1d` shape.
+    const desc = [...series.bars].reverse().map((b) => ({ close: b.close, volume: b.volume }));
+    out.set(sym, deriveBreakoutContext(desc));
+  }
+  return out;
+}
+
 /** Null-safe filtering — null values pass when no constraint is specified.
  *  `interestBySymbol` carries the per-stock settlement history used by the
  *  short-interest trend filter (kept off the ScreenerRow type so the UI never
- *  sees it). */
+ *  sees it). `breakoutBySymbol` mirrors the same pattern for the
+ *  breakout / breakdown filter. */
 function applyScreenerFilters(
   rows: ScreenerRow[],
   f: ScreenerFilters,
   interestBySymbol: Map<string, number[]> = new Map(),
+  breakoutBySymbol: Map<string, BreakoutContext> = new Map(),
 ): ScreenerRow[] {
   return rows.filter((r) => {
     if (f.market && r.market !== f.market) return false;
@@ -1606,6 +1700,30 @@ function applyScreenerFilters(
       (r.squeezeScore == null || r.squeezeScore < f.squeezeMin)
     ) {
       return false;
+    }
+    // Breakout / breakdown: T-1 close on one side of the support line
+    // (close on highest-volume day of last 20 sessions) and T close on
+    // the other. Rows with insufficient history (< 2 sessions, or no
+    // support level) are excluded.
+    if (f.breakout) {
+      const ctx = breakoutBySymbol.get(r.symbol);
+      if (
+        ctx == null ||
+        ctx.tClose == null ||
+        ctx.tMinus1Close == null ||
+        ctx.supportClose == null
+      ) {
+        return false;
+      }
+      if (f.breakout === 'breakout') {
+        if (!(ctx.tMinus1Close < ctx.supportClose && ctx.tClose > ctx.supportClose)) {
+          return false;
+        }
+      } else {
+        if (!(ctx.tMinus1Close > ctx.supportClose && ctx.tClose < ctx.supportClose)) {
+          return false;
+        }
+      }
     }
     return true;
   });

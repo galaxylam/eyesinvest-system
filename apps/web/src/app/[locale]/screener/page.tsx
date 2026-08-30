@@ -44,6 +44,8 @@ interface ScreenerPageProps {
     gs?: string;
     /** Short-interest trend: 'u1' / 'u2' / 'u3' / 'd1' / 'd2' / 'd3' */
     sit?: string;
+    /** Breakout / breakdown filter: 'up' (breakout) / 'down' (breakdown). */
+    brk?: string;
     sort?: string;
     dir?: string;
   }>;
@@ -137,6 +139,12 @@ function parseFilters(sp: Awaited<ScreenerPageProps['searchParams']>): ScreenerF
         periods: n as 1 | 2 | 3,
       };
     }
+  }
+  // Breakout / breakdown: 'breakout' = broke above the 20d highest-volume-day
+  // close (T-1 below, T above); 'breakdown' = broke below. Anything else is
+  // silently ignored so a hand-edited URL doesn't 500 the page.
+  if (sp.brk === 'breakout' || sp.brk === 'breakdown') {
+    f.breakout = sp.brk;
   }
   return f;
 }

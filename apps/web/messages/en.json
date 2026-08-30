@@ -224,7 +224,10 @@
       "squeezeScore": "Squeeze",
       "sq40": "≥ 40 (Normal+)",
       "sq60": "≥ 60 (Elevated+)",
-      "sq80": "≥ 80 (High only)"
+      "sq80": "≥ 80 (High only)",
+      "breakout": "Breakout",
+      "breakoutUp": "Broke above support",
+      "breakoutDown": "Broke below support"
     },
     "col": {
       "symbol": "Symbol",
@@ -317,7 +320,9 @@
       "ma5": "MA(5)",
       "ma20": "MA(20)",
       "ma50": "MA(50)",
-      "ma200": "MA(200)"
+      "ma200": "MA(200)",
+      "support": "Support",
+      "supportHint": "Close on the highest-volume day in the last 20 trading days"
     },
     "charts": {
       "shortSelling": {
