@@ -33,15 +33,37 @@ on:
     - cron: '0 1 * * 2-6'     # HK, Tue-Sat UTC (= Mon-Fri HKT)
   workflow_dispatch:
     inputs:
-      market:
-        description: 'Market to sync'
+      mode:
+        description: |
+          `sync` — run the standard market pipeline (cron equivalent).
+          `backfill-sfc` — force-refetch the SFC weekly short-interest CSVs
+                           for HK with SHORTS_FORCE_SFC_BACKFILL=1 and
+                           SFC_BACKFILL_DAYS=<sfc_backfill_days> below.
+                           Used to fill gaps in the historical archive.
         required: true
+        default: sync
+        type: choice
+        options:
+          - sync
+          - backfill-sfc
+      market:
+        description: |
+          Market to sync (sync mode only — backfill-sfc always runs HK).
+        required: false
         default: 'all'
         type: choice
         options:
           - all
           - us
           - hk
+      sfc_backfill_days:
+        description: |
+          How many trailing days of SFC weekly CSVs to backfill
+          (backfill-sfc mode only). 1100 ≈ ~3.5 years from 2026 going
+          back; 1825 ≈ 5 years.
+        required: false
+        default: '1100'
+        type: string
 
 # Block overlapping runs of the same workflow (cron can occasionally fire
 # twice, or a manual run during a scheduled one shouldn't double-charge
@@ -80,7 +102,13 @@ jobs:
         id: market
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "value=${{ inputs.market }}" >> "$GITHUB_OUTPUT"
+            # Manual run: market input is authoritative. backfill-sfc always
+            # pins to HK regardless of the market field.
+            if [ "${{ inputs.mode }}" = "backfill-sfc" ]; then
+              echo "value=hk" >> "$GITHUB_OUTPUT"
+            else
+              echo "value=${{ inputs.market }}" >> "$GITHUB_OUTPUT"
+            fi
           else
             # Cron schedules are in UTC; the *reason* for each schedule picks
             # the market (see header comments). Identify which cron fired by
@@ -110,9 +138,16 @@ jobs:
           # under GitHub Actions' 90-minute timeout.
           PRICE_THROTTLE_SECONDS: '0.5'
           INFO_THROTTLE_SECONDS: '1.0'
+          # backfill-sfc-only knobs — ignored when mode=sync.
+          SHORTS_FORCE_SFC_BACKFILL: ${{ inputs.mode == 'backfill-sfc' && '1' || '' }}
+          SFC_BACKFILL_DAYS: ${{ inputs.sfc_backfill_days || '' }}
         run: |
           MARKET="${{ steps.market.outputs.value }}"
-          echo "==> market=$MARKET (trigger=${{ github.event_name }})"
+          MODE="${{ inputs.mode || 'sync' }}"
+          echo "==> mode=$MODE market=$MARKET (trigger=${{ github.event_name }})"
+          if [ "$MODE" = "backfill-sfc" ]; then
+            echo "==> SFC backfill: SHORTS_FORCE_SFC_BACKFILL=$SHORTS_FORCE_SFC_BACKFILL days=$SFC_BACKFILL_DAYS"
+          fi
           case "$MARKET" in
             us) uv run python -m eyesinvest_worker all-us ;;
             hk) uv run python -m eyesinvest_worker all-hk ;;
