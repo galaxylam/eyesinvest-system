@@ -115,8 +115,15 @@ export interface EfficiencyPoint {
   efficiency: number | null;
   /** volume / sharesOutstanding × 100 for this day. Null when shares are missing. */
   turnoverPct: number | null;
-  /** (close - prevClose) / prevClose × 100. Null on the first day. */
+  /** (close - prevClose) / prevClose × 100. Null on the first day. Drives
+   *  `efficiency` (magnitude of daily price move) and any "daily P&L" view. */
   dailyChangePct: number | null;
+  /** (close - open) / open × 100. Null when open is missing. Drives bar
+   *  colour and the green/red volume share pill so they match the worker's
+   *  `ey_stock_analytics.green_red_volume_share_1m` encoding
+   *  (`close > open_` = green bar). Distinct from `dailyChangePct` because
+   *  intraday and overnight directions can disagree for the same bar. */
+  intradayChangePct: number | null;
   /** Raw daily share volume. Null when not available. */
   volume: number | null;
 }

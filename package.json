@@ -15,7 +15,9 @@
     "test": "turbo run test",
     "e2e": "turbo run e2e",
     "clean": "turbo run clean && rm -rf node_modules .turbo",
-    "worker:sync": "cd workers/yfinance && uv run python -m eyesinvest_worker all"
+    "worker:sync": "cd workers/yfinance && uv run python -m eyesinvest_worker all",
+    "worker:sync:us": "cd workers/yfinance && uv run python -m eyesinvest_worker all-us",
+    "worker:sync:hk": "cd workers/yfinance && uv run python -m eyesinvest_worker all-hk"
   },
   "devDependencies": {
     "eslint": "^8.57.1",

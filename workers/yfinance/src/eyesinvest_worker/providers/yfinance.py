@@ -95,23 +95,48 @@ def fetch_daily_history(
 
 
 def fetch_quote_snapshot(stock_id: str, symbol: str) -> QuoteSnapshot | None:
-    """Build a QuoteSnapshot from the latest two daily bars."""
+    """Build a QuoteSnapshot from the latest two daily bars.
+
+    Asks yfinance for the last 10 days first; if that comes back empty
+    (transient rate-limit / cache miss / holiday window edge cases),
+    falls back to 60d. The two windows return the same recent bars in
+    the happy path — the fallback only matters when yfinance's short
+    request hits a flaky edge case. Without this fallback, a stock whose
+    first attempt returns None is silently dropped from
+    `ey_quote_snapshot` and the screener shows `—` for its price / change
+    / volume until the next `sync-quotes` run.
+    """
     ticker = yf.Ticker(_to_yf_ticker(symbol))
     end = datetime.utcnow().date()
-    start = end - timedelta(days=10)  # last ~2 weeks covers weekends / holidays
-    try:
-        df = ticker.history(
-            start=start.isoformat(),
-            end=(end + timedelta(days=1)).isoformat(),
-            interval="1d",
-            auto_adjust=False,
-            actions=False,
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(f"{symbol}: history() for quote failed: {exc}")
+
+    df: pd.DataFrame | None = None
+    last_exc: Exception | None = None
+    for window_days in (10, 60):
+        start = end - timedelta(days=window_days)
+        try:
+            df = ticker.history(
+                start=start.isoformat(),
+                end=(end + timedelta(days=1)).isoformat(),
+                interval="1d",
+                auto_adjust=False,
+                actions=False,
+            )
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            logger.warning(f"{symbol}: history() for quote failed ({window_days}d window): {exc}")
+            continue
+        if df is not None and not df.empty:
+            if window_days > 10:
+                logger.info(f"{symbol}: quote recovered via {window_days}d fallback window")
+            break
+    else:  # both windows empty / failed
+        if last_exc is not None:
+            logger.warning(f"{symbol}: history() for quote failed after 60d fallback: {last_exc}")
+        else:
+            logger.warning(f"{symbol}: empty history for quote (10d + 60d both empty)")
         return None
+
     if df is None or df.empty or len(df) < 1:
-        logger.warning(f"{symbol}: empty history for quote")
         return None
 
     last_idx = df.index[-1]

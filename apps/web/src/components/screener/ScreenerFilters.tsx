@@ -120,6 +120,10 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
     const query = params.toString();
     startTransition(() => {
       router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
+      // Bypass the App Router's dynamic RSC cache so the table re-fetches with
+      // the new filters instead of serving the previous segment's payload
+      // (visible as "stale historical result" until a manual refresh).
+      router.refresh();
     });
   };
 

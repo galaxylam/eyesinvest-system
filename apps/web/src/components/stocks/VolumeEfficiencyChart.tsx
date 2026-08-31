@@ -22,8 +22,10 @@ interface VolumeEfficiencyChartProps {
 
 /**
  * Inline-SVG replacement that mirrors the reference image: bars colored by
- * the sign of dailyChangePct (green when the stock closed higher than it
- * opened, red when lower), with two average reference lines:
+ * the sign of `intradayChangePct` (green when the stock closed higher than
+ * it opened, red when lower) — matches the worker's
+ * `ey_stock_analytics.green_red_volume_share_1m` so the greenShare pill
+ * on this chart agrees with the screener. With two average reference lines:
  *   - Dashed blue: the entire-series mean of efficiency
  *   - Dotted orange: 30-day rolling average (current value plotted as a
  *     flat horizontal line for comparison)
@@ -46,11 +48,15 @@ export function VolumeEfficiencyChart({
   const usable = useMemo(
     () =>
       (data?.series ?? [])
-        .filter((p) => p.efficiency != null && p.dailyChangePct != null)
+        // `intradayChangePct` (close vs open) drives bar colour + greenShare
+        // so the chart matches `ey_stock_analytics.green_red_volume_share_1m`
+        // and the screener's gs= filter. `efficiency` uses the daily (close
+        // vs prev close) magnitude and is unaffected by this swap.
+        .filter((p) => p.efficiency != null && p.intradayChangePct != null)
         .map((p) => ({
           time: p.date as Time,
           value: p.efficiency as number,
-          change: p.dailyChangePct as number,
+          change: p.intradayChangePct as number,
           volume: p.volume,
         })),
     [data?.series],

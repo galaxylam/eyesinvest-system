@@ -40,7 +40,10 @@ uv run python -m eyesinvest_worker sync-squeeze  # see docs/SQUEEZE.md
 uv run python -m eyesinvest_worker sync-sector-strength
 ```
 
-Convenience from repo root: `pnpm worker:sync` (= `cd workers/yfinance && uv run python -m eyesinvest_worker all`).
+Convenience from repo root:
+- `pnpm worker:sync` (= `cd workers/yfinance && uv run python -m eyesinvest_worker all`)
+- `pnpm worker:sync:us` (= `... all-us`) — US stocks only end-to-end
+- `pnpm worker:sync:hk` (= `... all-hk`) — HK stocks only end-to-end
 
 ## What it writes
 

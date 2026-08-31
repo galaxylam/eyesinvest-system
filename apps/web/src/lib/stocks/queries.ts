@@ -885,17 +885,19 @@ export async function getVolumeEfficiency(
 
       const { data, error } = await supabase
         .from('ey_price_1d')
-        .select('trade_date, close, volume')
+        .select('trade_date, open, close, volume')
         .eq('stock_id', stockRow.id)
         .order('trade_date', { ascending: false })
         .limit(days);
       if (error) throw error;
       const rows = ((data ?? []) as Array<{
         trade_date: string;
+        open: number | null;
         close: number;
         volume: number;
       }>).map((r) => ({
         date: r.trade_date,
+        open: r.open == null ? null : Number(r.open),
         close: Number(r.close),
         volume: Number(r.volume),
       }));
@@ -931,11 +933,18 @@ export async function getVolumeEfficiency(
       // Per-day series used by the VolumeEfficiencyChart subplot. Built from
       // the same `rows` array the headline fields come from — no extra
       // query. First day has no prior close, so its efficiency is null.
+      // `intradayChangePct` (close vs open) drives bar colour and the
+      // green/red volume share pill so the chart agrees with the worker's
+      // `ey_stock_analytics.green_red_volume_share_1m` encoding.
       const series: EfficiencyPoint[] = rows.map((r, i) => {
         const prev = i > 0 ? rows[i - 1] : null;
         const dailyChangePct =
           prev != null && prev.close !== 0
             ? ((r.close - prev.close) / prev.close) * 100
+            : null;
+        const intradayChangePct =
+          r.open != null && r.open !== 0
+            ? ((r.close - r.open) / r.open) * 100
             : null;
         const turnoverPct =
           hasFloatData && shares != null ? (r.volume / shares) * 100 : null;
@@ -943,7 +952,14 @@ export async function getVolumeEfficiency(
           dailyChangePct != null && turnoverPct != null && turnoverPct > 0
             ? Math.abs(dailyChangePct) / turnoverPct
             : null;
-        return { date: r.date, efficiency, turnoverPct, dailyChangePct, volume: r.volume };
+        return {
+          date: r.date,
+          efficiency,
+          turnoverPct,
+          dailyChangePct,
+          intradayChangePct,
+          volume: r.volume,
+        };
       });
 
       return {

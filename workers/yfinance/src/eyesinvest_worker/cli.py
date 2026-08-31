@@ -51,6 +51,33 @@ from eyesinvest_worker.providers.finra_api import (
 # Stable iteration order so the `all` command is reproducible.
 _INDEX_CODES = ("SPX", "HSI")
 
+# Shared --market option for per-stock sync commands. Used to split US / HK
+# runs so a single invocation only touches one market end-to-end.
+_MARKET_OPTION = click.option(
+    "--market",
+    type=click.Choice(["all", "us", "hk"], case_sensitive=False),
+    default="all",
+    show_default=True,
+    help=(
+        "Restrict the run to one market. 'all' (default) updates US + HK; "
+        "'us' skips HK stocks; 'hk' skips US stocks. "
+        "Useful when one side is slow / rate-limited / already up-to-date."
+    ),
+)
+
+
+def _filter_by_market(stocks: list, market: str) -> list:
+    """In-memory filter for `fetch_active_stocks` by `s.market`.
+
+    `market` is the lower-cased CLI value ("all" / "us" / "hk"). Defensive
+    cast — callers pass user input straight from click.
+    """
+    market = (market or "all").lower()
+    if market == "all":
+        return stocks
+    target = market.upper()  # ey_stocks.market stores 'US' / 'HK'
+    return [s for s in stocks if s.market == target]
+
 
 def _load_config() -> WorkerConfig:
     # Trigger .env load explicitly so the same code path works whether the
@@ -71,13 +98,14 @@ def main() -> None:
 
 
 @main.command("sync-prices")
-def sync_prices() -> None:
+@_MARKET_OPTION
+def sync_prices(market: str) -> None:
     """Pull 2-year daily OHLC for every active stock."""
     cfg = _load_config()
     configure_logging(cfg.log_level)
     client = make_client(cfg.supabase_url, cfg.supabase_service_role_key)
-    stocks = fetch_active_stocks(client)
-    logger.info(f"syncing daily OHLC for {len(stocks)} stocks")
+    stocks = _filter_by_market(fetch_active_stocks(client), market)
+    logger.info(f"syncing daily OHLC for {len(stocks)} stocks (market={market})")
 
     total = 0
     for i, s in enumerate(stocks, start=1):
@@ -98,13 +126,14 @@ def sync_prices() -> None:
 
 
 @main.command("sync-quotes")
-def sync_quotes() -> None:
+@_MARKET_OPTION
+def sync_quotes(market: str) -> None:
     """Compute the latest per-stock quote snapshot."""
     cfg = _load_config()
     configure_logging(cfg.log_level)
     client = make_client(cfg.supabase_url, cfg.supabase_service_role_key)
-    stocks = fetch_active_stocks(client)
-    logger.info(f"computing quote snapshots for {len(stocks)} stocks")
+    stocks = _filter_by_market(fetch_active_stocks(client), market)
+    logger.info(f"computing quote snapshots for {len(stocks)} stocks (market={market})")
 
     quotes = []
     for i, s in enumerate(stocks, start=1):
@@ -121,13 +150,14 @@ def sync_quotes() -> None:
 
 
 @main.command("sync-fundamentals")
-def sync_fundamentals() -> None:
+@_MARKET_OPTION
+def sync_fundamentals(market: str) -> None:
     """Pull .info metrics for every active stock."""
     cfg = _load_config()
     configure_logging(cfg.log_level)
     client = make_client(cfg.supabase_url, cfg.supabase_service_role_key)
-    stocks = fetch_active_stocks(client)
-    logger.info(f"syncing fundamentals for {len(stocks)} stocks")
+    stocks = _filter_by_market(fetch_active_stocks(client), market)
+    logger.info(f"syncing fundamentals for {len(stocks)} stocks (market={market})")
 
     fundamentals_by_symbol: dict[str, Fundamentals] = {}
     for i, s in enumerate(stocks, start=1):
@@ -144,13 +174,14 @@ def sync_fundamentals() -> None:
 
 
 @main.command("sync-analytics")
-def sync_analytics() -> None:
+@_MARKET_OPTION
+def sync_analytics(market: str) -> None:
     """Compute MA / RSI / MACD / volatility / drawdown / returns for every stock."""
     cfg = _load_config()
     configure_logging(cfg.log_level)
     client = make_client(cfg.supabase_url, cfg.supabase_service_role_key)
-    stocks = fetch_active_stocks(client)
-    logger.info(f"computing analytics for {len(stocks)} stocks")
+    stocks = _filter_by_market(fetch_active_stocks(client), market)
+    logger.info(f"computing analytics for {len(stocks)} stocks (market={market})")
 
     total = 0
     for i, s in enumerate(stocks, start=1):
@@ -388,7 +419,8 @@ def sync_news_cmd(skip_llm: bool, article_limit: int | None) -> None:
 
 
 @main.command("sync-squeeze")
-def sync_squeeze() -> None:
+@_MARKET_OPTION
+def sync_squeeze(market: str) -> None:
     """Compute the short-squeeze score per stock and upsert onto ey_stock_analytics.
 
     Reads ``ey_price_1d`` (30d ADV for DTC), ``ey_short_interest`` (DTC +
@@ -406,8 +438,8 @@ def sync_squeeze() -> None:
     cfg = _load_config()
     configure_logging(cfg.log_level)
     client = make_client(cfg.supabase_url, cfg.supabase_service_role_key)
-    stocks = fetch_active_stocks(client)
-    logger.info(f"computing squeeze scores for {len(stocks)} stocks")
+    stocks = _filter_by_market(fetch_active_stocks(client), market)
+    logger.info(f"computing squeeze scores for {len(stocks)} stocks (market={market})")
 
     total = 0
     scored = 0
@@ -458,34 +490,80 @@ def sync_squeeze() -> None:
 
 @main.command("all")
 def sync_all() -> None:
-    """Run every sync command in sequence: prices → quotes → fundamentals → analytics → indexes → shorts → squeeze → sector-strength.
+    """Run every sync command for US + HK in sequence.
+
+    Convenience entry point for "refresh everything". Per-market splits
+    live in `all-us` / `all-hk`.
+    """
+    _run_pipeline(market="all")
+
+
+@main.command("all-us")
+def sync_all_us() -> None:
+    """Run every sync command for US stocks only.
+
+    Same pipeline as `all`, but each per-stock step gets `--market=us`,
+    so HK stocks are skipped end-to-end. `sync-indexes` (SPX+HSI) and
+    `sync-sector-strength` (global rollup) still run as-is.
+    """
+    _run_pipeline(market="us")
+
+
+@main.command("all-hk")
+def sync_all_hk() -> None:
+    """Run every sync command for HK stocks only.
+
+    Same pipeline as `all`, but each per-stock step gets `--market=hk`,
+    so US stocks are skipped end-to-end. `sync-indexes` (SPX+HSI) and
+    `sync-sector-strength` (global rollup) still run as-is.
+    """
+    _run_pipeline(market="hk")
+
+
+def _run_pipeline(market: str) -> None:
+    """Run the full per-market sync pipeline in order.
+
+    `market` is passed through to every per-stock command via
+    `--market=<market>`. `sync-indexes` and `sync-sector-strength`
+    don't accept a market filter (they aggregate across US + HK
+    intentionally) and run unchanged.
 
     `sync-news` is intentionally excluded — run it explicitly via
     `uv run python -m eyesinvest_worker sync-news` until the news + AI
     workflow has been reviewed and approved.
     """
-    for cmd in (
+    market_label = (market or "all").lower()
+    # Commands that filter per-stock by --market. The rest run as-is.
+    per_market_cmds = (
         "sync-prices",
         "sync-quotes",
         "sync-fundamentals",
         "sync-analytics",
-        "sync-indexes",
         "sync-shorts",
-        # NOTE: sync-news is intentionally NOT in this list. Run it
-        # explicitly via `uv run python -m eyesinvest_worker sync-news`
-        # until the news+AI workflow has been reviewed and approved.
         "sync-squeeze",
+    )
+    aggregate_cmds = (
+        "sync-indexes",
         "sync-sector-strength",
-    ):
-        logger.info(f"=== {cmd} ===")
+    )
+    logger.info(f"=== pipeline start (market={market_label}) ===")
+    for cmd in per_market_cmds + aggregate_cmds:
+        if cmd in per_market_cmds:
+            args = [cmd, f"--market={market_label}"]
+            log_cmd = f"{cmd} (--market={market_label})"
+        else:
+            args = [cmd]
+            log_cmd = f"{cmd} (market-agnostic)"
+        logger.info(f"=== {log_cmd} ===")
         # Re-invoke this CLI in-process so config + logging re-init cleanly.
-        rc = cli_main([cmd])
+        rc = cli_main(args)
         if rc != 0:
             raise click.ClickException(f"{cmd} failed (exit {rc})")
+    logger.info(f"=== pipeline done (market={market_label}) ===")
 
 
 def cli_main(args: list[str]) -> int:
-    """Helper for `sync_all` — return exit code instead of calling sys.exit."""
+    """Helper for `_run_pipeline` — return exit code instead of calling sys.exit."""
     try:
         main.main(args=args, standalone_mode=False)
     except click.exceptions.Abort:

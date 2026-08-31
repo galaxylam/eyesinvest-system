@@ -155,6 +155,10 @@ cp .env.example .env                   # fill in SUPABASE_URL + SUPABASE_SERVICE
 cd ../..
 pnpm worker:sync
 # = uv run python -m eyesinvest_worker all
+
+# Or run only one market end-to-end
+pnpm worker:sync:us        # US stocks only
+pnpm worker:sync:hk        # HK stocks only
 #   - sync-prices       → ey_price_1d (2y daily OHLC)
 #   - sync-quotes       → ey_quote_snapshot (latest close + change %)
 #   - sync-fundamentals → ey_stocks (market cap, P/E, 52-wk range, ...)
@@ -195,5 +199,7 @@ The admin app ships **without login** in Phase 1 — it's bound to
 | `pnpm lint` | Run ESLint |
 | `pnpm test` | Run unit tests (Vitest) |
 | `pnpm e2e` | Run Playwright smoke test |
-| `pnpm worker:sync` | Sync market data via the yfinance worker |
+| `pnpm worker:sync` | Sync all market data via the yfinance worker |
+| `pnpm worker:sync:us` | Sync US stocks only |
+| `pnpm worker:sync:hk` | Sync HK stocks only |
 | `pnpm clean` | Remove build artifacts |
