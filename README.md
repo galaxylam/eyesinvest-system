@@ -142,6 +142,28 @@ boots a stack matching `config.toml` on ports 54321/54322/54323, then
 
 ## Running the yfinance worker
 
+### Scheduled (recommended) — GitHub Actions
+
+`.github/workflows/sync.yml` runs both markets daily, no local setup:
+
+| Market | Cron (UTC) | Local time |
+|---|---|---|
+| US | `30 21 * * 1-5` | 16:30 ET (EST) / 17:30 ET (EDT), weekdays |
+| HK | `0 1 * * 2-6` | 09:00 HKT Mon–Fri (Tue–Sat UTC) |
+
+Required GitHub repo secrets (Settings → Secrets and variables → Actions):
+
+| Secret | Required | Notes |
+|---|---|---|
+| `SUPABASE_URL` | yes | `https://xxxxx.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | yes | service_role JWT (worker bypasses RLS) |
+| `OPENROUTER_API_KEY` | no | enables `sync-news` LLM pass |
+| `FINRA_API_CLIENT_ID` / `FINRA_API_SECRET` | no | enables FINRA API path for `sync-shorts` |
+
+You can also run it manually: Actions tab → "Sync market data" → Run workflow → pick `us` / `hk` / `all`. On failure the workflow opens a GitHub Issue labelled `sync-failure` — create that label once in your repo so the failure-issuance step doesn't no-op.
+
+### Local (development / ad-hoc backfill)
+
 ```bash
 # Install uv (one-time)
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -163,12 +185,15 @@ pnpm worker:sync:hk        # HK stocks only
 #   - sync-quotes       → ey_quote_snapshot (latest close + change %)
 #   - sync-fundamentals → ey_stocks (market cap, P/E, 52-wk range, ...)
 #   - sync-analytics    → ey_stock_analytics (MA / RSI / MACD / vol / returns)
+#   - sync-shorts       → ey_short_sale_1d + ey_short_interest
+#   - sync-squeeze      → squeeze_score / DTC / SI chg / volume spike
 #   - sync-indexes      → ey_index_quote (SPX, HSI)
+#   - sync-sector-strength → ey_sector_daily
 ```
 
-Scheduling is intentionally out of scope — recommended options
-(cron / launchd / GitHub Actions) are documented in `workers/yfinance/README.md`
-and the project-wide operations runbook at `docs/OPERATIONS.md`.
+The local scripts are still wired up in `package.json` so you can backfill or
+re-sync from your laptop without waiting for the cron. They just don't run on
+a schedule any more.
 
 ## What's NOT in Phase 3 yet
 

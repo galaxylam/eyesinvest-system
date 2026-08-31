@@ -1,0 +1,146 @@
+# ============================================================================
+# Daily market-data sync — replaces local `pnpm worker:sync` invocations.
+#
+# Two scheduled triggers (UTC):
+#   * `30 21 * * 1-5`  — US (all-us):  runs at 21:30 UTC Mon-Fri
+#                        = 16:30 ET (EST) / 17:30 ET (EDT), 30 min after US
+#                        market close so yfinance daily bars are stable and
+#                        FINRA T+1 short-sale data for the prior trading day
+#                        is in.
+#   * `0 1 * * 2-6`    — HK (all-hk):  runs at 01:00 UTC Tue-Sat
+#                        = 09:00 HKT Mon-Fri, ~17 hours after HK market close
+#                        so yfinance HK bars are stable and the SFC weekly
+#                        short-interest CSV (published Mondays) is in.
+#
+# Manual runs:
+#   Actions tab → "Sync market data" → Run workflow → pick market.
+#
+# Required GitHub repo secrets:
+#   SUPABASE_URL                — https://xxxxx.supabase.co
+#   SUPABASE_SERVICE_ROLE_KEY   — service_role JWT (worker bypasses RLS)
+#
+# Optional secrets (worker skips the step when absent):
+#   OPENROUTER_API_KEY          — enables sync-news LLM pass
+#   FINRA_API_CLIENT_ID         — enables FINRA API path for sync-shorts
+#   FINRA_API_SECRET
+# ============================================================================
+
+name: Sync market data
+
+on:
+  schedule:
+    - cron: '30 21 * * 1-5'   # US, weekdays
+    - cron: '0 1 * * 2-6'     # HK, Tue-Sat UTC (= Mon-Fri HKT)
+  workflow_dispatch:
+    inputs:
+      market:
+        description: 'Market to sync'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - us
+          - hk
+
+# Block overlapping runs of the same workflow (cron can occasionally fire
+# twice, or a manual run during a scheduled one shouldn't double-charge
+# Supabase / yfinance).
+concurrency:
+  group: sync-market-data
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync ${{ inputs.market || 'auto' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90   # pipeline is per-market sequential; 90 min is the
+                          # observed upper bound on a cold cache + slow FINRA.
+    permissions:
+      contents: read       # only need to checkout
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: workers/yfinance/uv.lock
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Sync worker dependencies
+        working-directory: workers/yfinance
+        run: uv sync --frozen
+
+      - name: Determine market
+        id: market
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ inputs.market }}" >> "$GITHUB_OUTPUT"
+          else
+            # Cron schedules are in UTC; the *reason* for each schedule picks
+            # the market (see header comments). Identify which cron fired by
+            # checking which weekday/time the trigger maps to.
+            #
+            # Heuristic: 21:30 UTC = US window; 01:00 UTC = HK window.
+            hour=$(date -u +%-H)
+            if [ "$hour" = "21" ]; then
+              echo "value=us" >> "$GITHUB_OUTPUT"
+            else
+              echo "value=hk" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Run sync
+        working-directory: workers/yfinance
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          FINRA_API_CLIENT_ID: ${{ secrets.FINRA_API_CLIENT_ID }}
+          FINRA_API_SECRET: ${{ secrets.FINRA_API_SECRET }}
+          # Be loud in logs but not so loud that yfinance / supabase floods
+          # the GH Actions log retention (90 days, 2 MB per job).
+          LOG_LEVEL: INFO
+          # Reduce noise from chatty providers — keeps runtime predictable
+          # under GitHub Actions' 90-minute timeout.
+          PRICE_THROTTLE_SECONDS: '0.5'
+          INFO_THROTTLE_SECONDS: '1.0'
+        run: |
+          MARKET="${{ steps.market.outputs.value }}"
+          echo "==> market=$MARKET (trigger=${{ github.event_name }})"
+          case "$MARKET" in
+            us) uv run python -m eyesinvest_worker all-us ;;
+            hk) uv run python -m eyesinvest_worker all-hk ;;
+            all) uv run python -m eyesinvest_worker all ;;
+            *) echo "Unknown market: $MARKET"; exit 1 ;;
+          esac
+
+      - name: Notify on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const market = '${{ steps.market.outputs.value }}';
+            const runUrl = context.payload.repository.html_url + '/actions/runs/' + context.runId;
+            const body = [
+              '❌ eyesinvest worker sync failed for market = `' + market + '`.',
+              '',
+              '[Open run →](' + runUrl + ')',
+              '',
+              'Most common causes:',
+              '- `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` missing or wrong in repo secrets',
+              '- yfinance rate-limit hit (the worker retries per-stock on transient errors)',
+              '- FINRA / HKEX upstream outage',
+            ].join('\n');
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[sync] ${market} sync failed — ${new Date().toISOString().slice(0,10)}`,
+              body,
+              labels: ['sync-failure'],
+            });
