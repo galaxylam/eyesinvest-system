@@ -796,15 +796,22 @@ export function getMockVolumeEfficiency(symbol: string): VolumeEfficiency | null
   })();
 
   // Per-day series for the VolumeEfficiencyChart subplot. Mirrors the
-  // production query: each row carries its own dailyChangePct + turnoverPct
-  // so the UI can recompute efficiency / draw tooltips without re-fetching.
-  // `volume` is included so the chart can compute the green/red volume
-  // share pill inline (matching the worker's `green_red_volume_share_1m`).
+  // production query: each row carries its own dailyChangePct +
+  // intradayChangePct + turnoverPct so the UI can recompute efficiency /
+  // draw tooltips without re-fetching. `volume` is included so the chart
+  // can compute the green/red volume share pill inline (matching the
+  // worker's `green_red_volume_share_1m`). `intradayChangePct` (close vs
+  // open) drives bar colour + greenShare; `dailyChangePct` (close vs
+  // prev close) drives efficiency magnitude.
   const series: EfficiencyPoint[] = bars.map((b, i) => {
     const prev = i > 0 ? bars[i - 1] : null;
     const dailyChangePct =
       prev != null && prev.close !== 0
         ? ((b.close - prev.close) / prev.close) * 100
+        : null;
+    const intradayChangePct =
+      b.open != null && b.open !== 0
+        ? ((b.close - b.open) / b.open) * 100
         : null;
     const turnoverPct =
       hasFloatData && shares != null ? (b.volume / shares) * 100 : null;
@@ -812,7 +819,14 @@ export function getMockVolumeEfficiency(symbol: string): VolumeEfficiency | null
       dailyChangePct != null && turnoverPct != null && turnoverPct > 0
         ? Math.abs(dailyChangePct) / turnoverPct
         : null;
-    return { date: b.time, efficiency, turnoverPct, dailyChangePct, volume: b.volume };
+    return {
+      date: b.time,
+      efficiency,
+      turnoverPct,
+      dailyChangePct,
+      intradayChangePct,
+      volume: b.volume,
+    };
   });
 
   return {
