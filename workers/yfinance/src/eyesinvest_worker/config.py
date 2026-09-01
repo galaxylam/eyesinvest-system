@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import Field
+from typing import Any
+
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -127,3 +129,24 @@ class WorkerConfig(BaseSettings):
     openrouter_max_articles_per_llm_call: int = Field(
         default=5, alias="OPENROUTER_MAX_ARTICLES_PER_LLM_CALL"
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_empty_env_strings(cls, data: Any) -> Any:
+        """Treat empty env strings as missing so int/bool fields fall back
+        to their defaults instead of failing with int_parsing / bool_parsing.
+
+        GitHub Actions evaluates `${{ inputs.x || '' }}` to an empty string
+        when `inputs.x` is unset (e.g. on a cron-triggered run, where the
+        workflow_dispatch inputs are undefined). pydantic-settings feeds
+        those values straight into type coercion, so an empty string trips
+        every non-optional int/bool field on the model. Stripping the keys
+        here lets each field use its declared default.
+        """
+        if isinstance(data, dict):
+            return {
+                k: v
+                for k, v in data.items()
+                if not (isinstance(v, str) and v == "")
+            }
+        return data
