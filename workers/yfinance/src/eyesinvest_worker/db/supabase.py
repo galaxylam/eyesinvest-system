@@ -5,7 +5,9 @@ from __future__ import annotations
 import math
 from typing import Any
 
+import httpx
 from supabase import Client, create_client
+from supabase.lib.client_options import SyncClientOptions
 
 from eyesinvest_worker.log import logger
 from eyesinvest_worker.models import (
@@ -61,7 +63,20 @@ def _sanitize_for_json(value: Any) -> Any:
 
 
 def make_client(url: str, key: str) -> Client:
-    return create_client(url, key)
+    # Force HTTP/1.1 on the PostgREST client. postgrest-py defaults its
+    # internal httpx.Client to http2=True, which multiplexes requests
+    # over a single TCP connection. Supabase's edge terminates idle
+    # HTTP/2 streams (Cloudflare / load-balancer idle timeout), and
+    # postgrest's `send_with_retry` only retries idempotent GET/HEAD
+    # on 503/520 — so a single dropped connection raises
+    # `httpx.RemoteProtocolError: <ConnectionTerminated>` out of every
+    # upsert and crashes the whole pipeline.
+    #
+    # We pass our own httpx.Client with http2=False; postgrest uses it
+    # as-is, and `Authorization` + per-request headers are still merged
+    # in by the request builder, so auth still works.
+    http_client = httpx.Client(http2=False, follow_redirects=True)
+    return create_client(url, key, options=SyncClientOptions(httpx_client=http_client))
 
 
 def fetch_active_stocks(client: Client) -> list[StockRecord]:
