@@ -190,7 +190,7 @@ def sync_analytics(market: str) -> None:
             logger.warning(f"[{i}/{len(stocks)}] {s.symbol}: no price history")
             continue
         result = compute_analytics(stock_id=s.id, bars=rows)
-        if result.rows:
+        if result and result.rows:
             total += upsert_analytics_rows(client, result.rows)
             logger.info(
                 f"[{i}/{len(stocks)}] {s.symbol}: {len(result.rows)} indicator rows"
