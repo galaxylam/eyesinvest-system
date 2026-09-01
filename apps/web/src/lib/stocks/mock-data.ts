@@ -471,12 +471,19 @@ function computeIndicatorsAt(
   // the window (preserves the "no signal" state).
   let greenRedVolumeRatio1m: number | null = null;
   let greenRedVolumeShare1m: number | null = null;
+  let greenRedImpactEase1m: number | null = null;
   if (idx >= 20) {
     const window = bars.slice(idx - 20, idx + 1);
     let greenSum = 0, greenCount = 0, redSum = 0, redCount = 0;
+    let upMoveSum = 0, downMoveSum = 0;
     for (const b of window) {
-      if (b.close > b.open) { greenSum += b.volume; greenCount += 1; }
-      else if (b.close < b.open) { redSum += b.volume; redCount += 1; }
+      if (b.close > b.open) {
+        greenSum += b.volume; greenCount += 1;
+        upMoveSum += (b.close - b.open);
+      } else if (b.close < b.open) {
+        redSum += b.volume; redCount += 1;
+        downMoveSum += (b.open - b.close);
+      }
     }
     if (greenCount > 0 && redCount > 0) {
       greenRedVolumeRatio1m = +((greenSum / greenCount) / (redSum / redCount)).toFixed(4);
@@ -492,6 +499,18 @@ function computeIndicatorsAt(
         greenShare >= 0.5
           ? +greenShare.toFixed(4)
           : -(+(1 - greenShare).toFixed(4));
+    }
+    // 1M impact ease — mirrors `_green_red_impact_ease_1m` in the worker.
+    // Same 21-day window as share. Up/down impacts are volume-weighted
+    // (Σ(close − open) ÷ Σ(volume)); ease = (up − down) / (up + down).
+    // One-sided windows collapse to ±1 (empty side treated as 0 impact),
+    // matching the worker's `fillna(0)` semantics; null only when both
+    // sides are empty or both impacts are zero (degenerate).
+    const upImpact = greenSum > 0 ? upMoveSum / greenSum : 0;
+    const downImpact = redSum > 0 ? downMoveSum / redSum : 0;
+    const totalImpact = upImpact + downImpact;
+    if (totalImpact > 0) {
+      greenRedImpactEase1m = +((upImpact - downImpact) / totalImpact).toFixed(4);
     }
   }
 
@@ -519,6 +538,7 @@ function computeIndicatorsAt(
     crowdedRatio,
     greenRedVolumeRatio1m,
     greenRedVolumeShare1m,
+    greenRedImpactEase1m,
     relativeStrength: null,
   };
 }
@@ -1187,6 +1207,7 @@ function buildMockScreenerRow(symbol: string): ScreenerRow | null {
     ma20Slope: latest?.ma20Slope ?? null,
     greenRedVolumeRatio1m: latest?.greenRedVolumeRatio1m ?? null,
     greenRedVolumeShare1m: latest?.greenRedVolumeShare1m ?? null,
+    greenRedImpactEase1m: latest?.greenRedImpactEase1m ?? null,
     shortInterestTrend: interestTrend,
     squeezeScore: squeeze?.score ?? null,
   } satisfies ScreenerRow;

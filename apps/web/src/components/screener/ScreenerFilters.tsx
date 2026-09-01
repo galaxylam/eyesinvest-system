@@ -17,6 +17,10 @@ function encodeGs(v: ScreenerFilters['greenShareThreshold']): string | undefined
   if (v == null) return undefined;
   return String(v);
 }
+function encodeEase(v: ScreenerFilters['easeThreshold']): string | undefined {
+  if (v == null) return undefined;
+  return String(v);
+}
 function encodeSit(v: ScreenerFilters['shortInterestTrend']): string | undefined {
   if (!v) return undefined;
   return `${v.direction[0]}${v.periods}`;
@@ -113,6 +117,8 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
     if (ma20) params.set('ma20', ma20); else params.delete('ma20');
     const gs = encodeGs(next.greenShareThreshold);
     if (gs) params.set('gs', gs); else params.delete('gs');
+    const ease = encodeEase(next.easeThreshold);
+    if (ease) params.set('ease', ease); else params.delete('ease');
     const sit = encodeSit(next.shortInterestTrend);
     if (sit) params.set('sit', sit); else params.delete('sit');
     if (next.breakout) params.set('brk', next.breakout); else params.delete('brk');
@@ -447,6 +453,34 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
         ]}
       />
       <SelectField
+        label={t('filter.ease')}
+        value={pendingFilters.easeThreshold != null ? String(pendingFilters.easeThreshold) : ''}
+        onChange={(v) => {
+          if (v === '') {
+            setPendingFilters({ ...pendingFilters, easeThreshold: undefined });
+            return;
+          }
+          const n = Number(v) as 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | -0.1 | -0.2 | -0.3 | -0.4 | -0.5 | -0.6;
+          setPendingFilters({ ...pendingFilters, easeThreshold: n });
+        }}
+        disabled={pending}
+        options={[
+          { value: '', label: t('filter.any') },
+          { value: '0.6', label: t('filter.easeGT60') },
+          { value: '0.5', label: t('filter.easeGT50') },
+          { value: '0.4', label: t('filter.easeGT40') },
+          { value: '0.3', label: t('filter.easeGT30') },
+          { value: '0.2', label: t('filter.easeGT20') },
+          { value: '0.1', label: t('filter.easeGT10') },
+          { value: '-0.1', label: t('filter.easeLT10') },
+          { value: '-0.2', label: t('filter.easeLT20') },
+          { value: '-0.3', label: t('filter.easeLT30') },
+          { value: '-0.4', label: t('filter.easeLT40') },
+          { value: '-0.5', label: t('filter.easeLT50') },
+          { value: '-0.6', label: t('filter.easeLT60') },
+        ]}
+      />
+      <SelectField
         label={t('filter.shortInterestTrend')}
         value={pendingFilters.shortInterestTrend ? `${pendingFilters.shortInterestTrend.direction[0]}${pendingFilters.shortInterestTrend.periods}` : ''}
         onChange={(v) => {
@@ -602,6 +636,7 @@ function hasAnyFilters(f: ScreenerFilters): boolean {
     f.ma5Trend != null ||
     f.ma20Trend != null ||
     f.greenShareThreshold != null ||
+    f.easeThreshold != null ||
     f.shortInterestTrend != null ||
     f.breakout != null
   );
@@ -616,7 +651,7 @@ function sameFilters(a: ScreenerFilters, b: ScreenerFilters): boolean {
     'return1mMin', 'return1mMax', 'return3mMax', 'return6mMax',
     'drawdown30dMax', 'volumeEfficiencyMin', 'crowdedRatioMin',
     'crowdedRatioMax', 'squeezeMin', 'ma5Trend', 'ma20Trend',
-    'greenShareThreshold', 'shortInterestTrend', 'breakout',
+    'greenShareThreshold', 'easeThreshold', 'shortInterestTrend', 'breakout',
   ];
   for (const k of keys) {
     const av = a[k];

@@ -1,0 +1,43 @@
+-- ============================================================================
+-- EyesInvest — Green/red impact ease (1M) — SIGNED encoding
+-- Adds one nullable column to ey_stock_analytics:
+--   green_red_impact_ease_1m — push-efficiency score, captures the
+--                              classical "1 dollar pushes X% up vs Y% down"
+--                              theory. Over a trailing 21-trading-day
+--                              window (matches the stocks page Range
+--                              picker "1M" so screener and stocks page
+--                              agree):
+--
+--                                up_impact   = Σ(close − open) / Σ(volume)
+--                                              on close>open bars
+--                                down_impact = Σ(open − close) / Σ(volume)
+--                                              on close<open bars
+--                                ease = (up_impact − down_impact)
+--                                       / (up_impact + down_impact)
+--
+--                              Range [-1, 1]:
+--                                +1  → 1 dollar pushes further up than down
+--                                      (very easy to push up)
+--                                −1  → 1 dollar pushes further down than up
+--                                      (very easy to push down)
+--                                 0  → symmetric push efficiency
+--
+-- Companion to `green_red_volume_share_1m` (migration 0014): share measures
+-- where the volume went (effort distribution), ease measures how
+-- efficiently the volume moved the price (push efficiency). The two
+-- surface different signals — a stock where share > 50% but ease < 0 is
+-- being "pushed up by brute force" (high up-volume but each up-day barely
+-- moves the price).
+--
+-- Bars where close == open (dojis) are excluded from both sides — they
+-- contribute no price move and shouldn't shift the ease either.
+--
+-- NaN when the window has no up or no down bars, or when both impacts
+-- are zero (degenerate window — both sides present but no price change).
+--
+-- Populated by sync-analytics alongside green_red_volume_share_1m.
+-- Nullable; pre-0017 rows stay valid until the worker overwrites them.
+-- ============================================================================
+
+alter table public.ey_stock_analytics
+  add column if not exists green_red_impact_ease_1m numeric(6,4);

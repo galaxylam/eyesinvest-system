@@ -339,6 +339,8 @@ export interface ScreenerRow {
   greenRedVolumeRatio1m: number | null;
   /** Trailing 21d SIGNED share in [-1, 1]. Positive when up-bars carried more total volume (magnitude = up-share); negative when down-bars carried more (magnitude = down-share). Null until ≥21 days of history or when the window has no up-or-down signal. Sibling of `greenRedVolumeRatio1m` — share weights high-volume days more heavily. Window matches the stocks page Range picker "1M" so the screener and the stocks-page pill agree. */
   greenRedVolumeShare1m: number | null;
+  /** Trailing 21d SIGNED push-efficiency score in [-1, 1]. Positive when 1 dollar of buying pushes the price up further than 1 dollar of selling pushes it down (buyers had an easier time); negative the other way. Null until ≥21 days of history or when both impacts are zero. Companion to `greenRedVolumeShare1m`: share = effort distribution, ease = push efficiency. */
+  greenRedImpactEase1m: number | null;
   /** Trend of the latest bi-weekly short_interest. 'up' = latest > previous, 'down' = latest < previous, 'flat' = equal, null = insufficient history (<2 settlements). */
   shortInterestTrend: 'up' | 'down' | 'flat' | null;
   /** 0..100 composite short-squeeze score (see docs/SQUEEZE.md). Null when any
@@ -356,6 +358,17 @@ export interface ScreenerRow {
  *    * negative threshold → keep rows with `share < threshold` (in red)
  *  E.g. `0.5` ≈ `>+50%`, `-0.4` ≈ `<-40%`. */
 export type GreenShareThreshold =
+  | 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6
+  | -0.1 | -0.2 | -0.3 | -0.4 | -0.5 | -0.6;
+
+/** Discrete allow-list for the 1M green/red impact-ease screener filter.
+ *  Same encoding as GreenShareThreshold:
+ *    * positive threshold → keep rows with `ease > threshold` (easy to push up)
+ *    * negative threshold → keep rows with `ease < threshold` (easy to push down)
+ *  The persisted ease is signed, so a positive threshold can't match a
+ *  red-dominant row and vice versa. E.g. `0.5` ≈ `>+50%` (very easy to push
+ *  up), `-0.4` ≈ `<-40%` (very easy to push down). */
+export type EaseThreshold =
   | 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6
   | -0.1 | -0.2 | -0.3 | -0.4 | -0.5 | -0.6;
 
@@ -405,6 +418,10 @@ export interface ScreenerFilters {
   /** 1M green/red share threshold — single signed number, see
    *  `GreenShareThreshold` for semantics. */
   greenShareThreshold?: GreenShareThreshold;
+  /** 1M green/red impact-ease threshold — single signed number, see
+   *  `EaseThreshold` for semantics. Captures how easily the stock can be
+   *  pushed up (positive) or down (negative) per dollar of volume. */
+  easeThreshold?: EaseThreshold;
   /** Short-interest settlement trend over the last N consecutive periods. */
   shortInterestTrend?: ShortInterestTrendFilter;
   /** Lower bound on the 0..100 short-squeeze score (e.g. 60 = ≥Elevated).

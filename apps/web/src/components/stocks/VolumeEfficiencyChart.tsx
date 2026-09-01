@@ -130,6 +130,44 @@ export function VolumeEfficiencyChart({
     return gs >= 0.5 ? gs : -(1 - gs);
   }, [windowed]);
 
+  // Push/pull ease — companion pill to `greenShare` above. Captures the
+  // classical "1 dollar pushes X% up vs Y% down" theory: how efficiently
+  // does buying volume move the price up vs selling volume move it down,
+  // over the same windowed bar series. Mirrors the worker's
+  // `_green_red_impact_ease_1m`:
+  //   up_impact   = Σ(close − open) on up-bars / Σ(volume) on up-bars
+  //   down_impact = Σ(open − close) on down-bars / Σ(volume) on down-bars
+  //   ease = (up_impact − down_impact) / (up_impact + down_impact)
+  // Range [-1, 1]: +N → 1 dollar pushes further up; −N → further down.
+  // Uses `p.change` (the intraday percent already stashed on each bar by
+  // the `.map` above) as the move magnitude — the absolute scale cancels
+  // in the ratio, so we just need both sides in consistent units.
+  const easeScore = useMemo(() => {
+    let upMoveSum = 0;
+    let downMoveSum = 0;
+    let greenVol = 0;
+    let redVol = 0;
+    for (const p of windowed) {
+      if (p.change == null || p.volume == null) continue;
+      const move = Math.abs(p.change);
+      if (p.change > 0) {
+        upMoveSum += move;
+        greenVol += p.volume;
+      } else if (p.change < 0) {
+        downMoveSum += move;
+        redVol += p.volume;
+      }
+    }
+    // Match the worker's `fillna(0)` semantics: a one-sided window
+    // collapses to ±1, only the truly degenerate windows (both sides
+    // empty or both impacts zero) yield null.
+    const upImpact = greenVol > 0 ? upMoveSum / greenVol : 0;
+    const downImpact = redVol > 0 ? downMoveSum / redVol : 0;
+    const totalImpact = upImpact + downImpact;
+    if (totalImpact <= 0) return null;
+    return (upImpact - downImpact) / totalImpact;
+  }, [windowed]);
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container || usable.length === 0) return;
@@ -282,6 +320,24 @@ export function VolumeEfficiencyChart({
             >
               {greenShare != null
                 ? `${greenShare > 0 ? '+' : ''}${(greenShare * 100).toFixed(1)}%`
+                : '—'}
+            </span>
+          </div>
+          <div className="flex items-baseline gap-2 border-l border-border pl-4">
+            <span className="text-2xs text-fg-subtle">{t('ease')}</span>
+            <span
+              className={`tabular font-mono text-xs font-medium ${
+                easeScore == null
+                  ? 'text-fg-subtle'
+                  : easeScore > 0
+                    ? 'text-emerald-500'
+                    : easeScore < 0
+                      ? 'text-rose-500'
+                      : 'text-fg-subtle'
+              }`}
+            >
+              {easeScore != null
+                ? `${easeScore > 0 ? '+' : ''}${(easeScore * 100).toFixed(1)}%`
                 : '—'}
             </span>
           </div>

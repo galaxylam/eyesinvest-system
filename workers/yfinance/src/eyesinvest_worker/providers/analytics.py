@@ -204,6 +204,69 @@ def _green_red_volume_share_1m(
     return pd.Series(sign * magnitude, index=green_share.index)
 
 
+def _green_red_impact_ease_1m(
+    open_: pd.Series, close: pd.Series, volume: pd.Series, window: int = 21,
+) -> pd.Series:
+    """Trailing-21-day SIGNED ease-of-push score in [-1, 1].
+
+    Captures the classical "use the same 1 dollar, how far can the stock
+    be pushed up vs down" theory. Companion to
+    `_green_red_volume_share_1m`:
+      * share → where the volume went (effort distribution)
+      * ease  → how efficiently the volume moved the price (push efficiency)
+
+        up_impact   = Σ(close − open) / Σ(volume)   on close>open bars
+        down_impact = Σ(open − close) / Σ(volume)   on close<open bars
+        ease        = (up_impact − down_impact)
+                      / (up_impact + down_impact)
+
+    Both impacts are positive magnitudes; the ratio cancels absolute
+    price/volume scale, yielding a normalized ease score:
+      * ease > 0 → 1 dollar pushes the stock further up than down
+                   (buyers had an easier time during the window)
+      * ease < 0 → 1 dollar pushes the stock further down than up
+                   (sellers had an easier time during the window)
+      * ease = +1 / −1 → one-sided window (all up-bars or all down-bars)
+
+    NaN when the window has no up or no down bars (no signal), or when
+    both impacts are zero (degenerate window — both sides present but
+    no price change).
+
+    Dojis (close == open) are excluded from both sides; they contribute
+    no price move and shouldn't shift the ease calculation.
+    """
+    is_green = (close > open_).astype(float)
+    is_red = (close < open_).astype(float)
+
+    # Per-bar contribution to (close − open) on each side; dojis contribute
+    # 0 to both because the gating masks them out before multiplication.
+    up_move = (close - open_) * is_green
+    down_move = (open_ - close) * is_red
+
+    up_move_sum = up_move.rolling(window, min_periods=window).sum()
+    down_move_sum = down_move.rolling(window, min_periods=window).sum()
+    green_vol_sum = (volume * is_green).rolling(window, min_periods=window).sum()
+    red_vol_sum = (volume * is_red).rolling(window, min_periods=window).sum()
+
+    # Volume-weighted impact per dollar of trading on each side. 0 in the
+    # denominator → that side had no bars in the window → NaN propagates.
+    up_impact = up_move_sum / green_vol_sum.replace(0, np.nan)
+    down_impact = down_move_sum / red_vol_sum.replace(0, np.nan)
+    # Fill NaN with 0 BEFORE summing so one-sided windows collapse to
+    # ±1 instead of NaN: if only the up-side has impact, total_impact
+    # becomes `up_impact + 0 = up_impact` and the ratio is +1; symmetric
+    # for the down-only case. The denominator still rejects the truly
+    # degenerate windows (both sides empty, or both impacts zero).
+    total_impact = up_impact.fillna(0) + down_impact.fillna(0)
+    diff = up_impact.fillna(0) - down_impact.fillna(0)
+
+    # Symmetric ratio: +1 means "all impact came from up-side",
+    # −1 means "all impact came from down-side". When total_impact is 0
+    # (both sides had zero price change), result is NaN — that's a
+    # degenerate window, not a "perfectly symmetric" signal.
+    return diff / total_impact.replace(0, np.nan)
+
+
 # ----- Phase 3+ squeeze-score helpers ----------------------------------------
 
 
@@ -415,6 +478,9 @@ def compute_analytics(
     df["green_red_volume_share_1m"] = _green_red_volume_share_1m(
         open_series, close, volume_series, window=21,
     )
+    df["green_red_impact_ease_1m"] = _green_red_impact_ease_1m(
+        open_series, close, volume_series, window=21,
+    )
     df["relative_strength"] = pd.Series(np.nan, index=df.index, dtype="float64")
 
     # Phase 3+ squeeze-score components — per-row trailing-window series so
@@ -481,6 +547,7 @@ def compute_analytics(
                 crowded_ratio=_maybe_float(r.get("crowded_ratio")),
                 green_red_volume_ratio_1m=_maybe_float(r.get("green_red_volume_ratio_1m")),
                 green_red_volume_share_1m=_maybe_float(r.get("green_red_volume_share_1m")),
+                green_red_impact_ease_1m=_maybe_float(r.get("green_red_impact_ease_1m")),
                 relative_strength=_maybe_float(r.get("relative_strength")),
                 squeeze_score=squeeze_score,
                 squeeze_dtc=squeeze_dtc,

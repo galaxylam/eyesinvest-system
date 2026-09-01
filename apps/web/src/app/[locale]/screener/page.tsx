@@ -42,6 +42,10 @@ interface ScreenerPageProps {
     ma20?: string;
     /** Green-share threshold: 'g0.1'..'g0.7' / 'r0.1'..'r0.7' (step 0.1). */
     gs?: string;
+    /** Green/red impact-ease threshold: same encoding as `gs` — positive
+     *  values mean "easy to push up", negative "easy to push down".
+     *  `ease=0.5` → `>+50%`, `ease=-0.4` → `<-40%`. */
+    ease?: string;
     /** Short-interest trend: 'u1' / 'u2' / 'u3' / 'd1' / 'd2' / 'd3' */
     sit?: string;
     /** Breakout / breakdown filter: 'up' (breakout) / 'down' (breakdown). */
@@ -128,6 +132,15 @@ function parseFilters(sp: Awaited<ScreenerPageProps['searchParams']>): ScreenerF
     const allowed = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, -0.1, -0.2, -0.3, -0.4, -0.5, -0.6];
     if (Number.isFinite(n) && allowed.includes(n)) {
       f.greenShareThreshold = n as 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | -0.1 | -0.2 | -0.3 | -0.4 | -0.5 | -0.6;
+    }
+  }
+  if (sp.ease) {
+    // Same single-signed-threshold scheme as `gs` — positive means
+    // "ease > threshold" (easy to push up), negative the reverse.
+    const n = Number(sp.ease);
+    const allowed = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, -0.1, -0.2, -0.3, -0.4, -0.5, -0.6];
+    if (Number.isFinite(n) && allowed.includes(n)) {
+      f.easeThreshold = n as 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | -0.1 | -0.2 | -0.3 | -0.4 | -0.5 | -0.6;
     }
   }
   if (sp.sit) {

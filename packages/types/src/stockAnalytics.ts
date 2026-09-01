@@ -38,6 +38,16 @@ export interface StockAnalytics {
   greenRedVolumeRatio1m: number | null;
   /** Trailing 21-day SIGNED green share in [-1, 1]. Positive when green dominant (magnitude = green share); negative when red dominant (magnitude = red share). Null until 21 days of history or when the window has no up-or-down signal. The sign carries the colour zone, the magnitude carries how decisively one side is winning — so the screener filter `> +50%` matches green share > 50% and `< -50%` matches red share > 50%. Window matches the stocks page Range picker "1M" so the two surfaces agree. */
   greenRedVolumeShare1m: number | null;
+  /** Trailing 21-day SIGNED ease-of-push score in [-1, 1].
+   *  up_impact   = Σ(close − open) / Σ(volume)   on close>open bars
+   *  down_impact = Σ(open − close) / Σ(volume)   on close<open bars
+   *  ease        = (up_impact − down_impact) / (up_impact + down_impact)
+   *  +N → 1 dollar pushes the stock further up than down (buyers had an
+   *        easier time during the window).
+   *  −N → 1 dollar pushes further down (sellers had an easier time).
+   *  Companion to greenRedVolumeShare1m (effort split vs push efficiency).
+   *  Null until 21 days of history or when both impacts are zero. */
+  greenRedImpactEase1m: number | null;
   /** Trailing 1m return minus the stock's market benchmark (SPX for US, HSI for HK). Percent points. Populated only on the most-recent row. */
   relativeStrength: number | null;
 }

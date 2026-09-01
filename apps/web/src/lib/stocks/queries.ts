@@ -507,7 +507,7 @@ export async function getStockAnalytics(
         .select(
           'as_of_date, ma20, ma50, ma200, rsi14, macd_line, macd_signal, macd_hist, ' +
             'volatility_30d, max_drawdown_30d, return_1m, return_3m, return_6m, return_1y, return_1w, ' +
-            'volume_efficiency, crowded_ratio, green_red_volume_ratio_1m, green_red_volume_share_1m, relative_strength',
+            'volume_efficiency, crowded_ratio, green_red_volume_ratio_1m, green_red_volume_share_1m, green_red_impact_ease_1m, relative_strength',
         )
         .eq('stock_id', stockRow.id)
         .order('as_of_date', { ascending: false })
@@ -562,6 +562,7 @@ export async function getStockAnalytics(
         crowded_ratio: number | null;
         green_red_volume_ratio_1m: number | null;
         green_red_volume_share_1m: number | null;
+        green_red_impact_ease_1m: number | null;
         relative_strength: number | null;
       }>).map(
         (r) =>
@@ -589,6 +590,7 @@ export async function getStockAnalytics(
             crowdedRatio: num(r.crowded_ratio),
             greenRedVolumeRatio1m: num(r.green_red_volume_ratio_1m),
             greenRedVolumeShare1m: num(r.green_red_volume_share_1m),
+            greenRedImpactEase1m: num(r.green_red_impact_ease_1m),
             relativeStrength: num(r.relative_strength),
           }) satisfies StockAnalytics,
       );
@@ -1179,7 +1181,7 @@ export async function getScreenerRows(
             supabase.from('ey_stock_analytics').select(
               'stock_id, as_of_date, return_1m, return_3m, return_6m, return_1y, ' +
                 'volume_efficiency, crowded_ratio, max_drawdown_30d, ma5_slope, ma20_slope, ' +
-                'green_red_volume_ratio_1m, green_red_volume_share_1m, squeeze_score',
+                'green_red_volume_ratio_1m, green_red_volume_share_1m, green_red_impact_ease_1m, squeeze_score',
             ).in('stock_id', chunk).order('as_of_date', { ascending: false }),
           ),
         ),
@@ -1230,7 +1232,7 @@ export async function getScreenerRows(
         volume_efficiency: number | null; crowded_ratio: number | null;
         max_drawdown_30d: number | null;
         ma5_slope: number | null; ma20_slope: number | null; green_red_volume_ratio_1m: number | null;
-        green_red_volume_share_1m: number | null;
+        green_red_volume_share_1m: number | null; green_red_impact_ease_1m: number | null;
         squeeze_score: number | null;
       }>();
       for (const a of ((analyticsRes.data ?? []) as unknown as Array<{
@@ -1239,7 +1241,7 @@ export async function getScreenerRows(
         volume_efficiency: number | null; crowded_ratio: number | null;
         max_drawdown_30d: number | null;
         ma5_slope: number | null; ma20_slope: number | null; green_red_volume_ratio_1m: number | null;
-        green_red_volume_share_1m: number | null;
+        green_red_volume_share_1m: number | null; green_red_impact_ease_1m: number | null;
         squeeze_score: number | null;
       }>)) {
         if (analyticsMap.has(a.stock_id)) continue; // first wins; we ordered desc
@@ -1318,6 +1320,7 @@ export async function getScreenerRows(
           ma20Slope: a ? num(a.ma20_slope) : null,
           greenRedVolumeRatio1m: a ? num(a.green_red_volume_ratio_1m) : null,
           greenRedVolumeShare1m: a ? num(a.green_red_volume_share_1m) : null,
+          greenRedImpactEase1m: a ? num(a.green_red_impact_ease_1m) : null,
           shortInterestTrend: computeShortInterestTrend(interest),
           squeezeScore: a ? num(a.squeeze_score) : null,
         } satisfies ScreenerRow;
@@ -1702,6 +1705,16 @@ function applyScreenerFilters(
       if (share == null) return false;
       if (f.greenShareThreshold > 0 && share <= f.greenShareThreshold) return false;
       if (f.greenShareThreshold < 0 && share >= f.greenShareThreshold) return false;
+    }
+    if (f.easeThreshold != null) {
+      // Same single-signed-threshold pattern as greenShareThreshold:
+      // positive → `ease > threshold` (easy to push up), negative → reverse.
+      // Ease is NaN/null when the window has no up/down signal or when both
+      // impacts are zero — those rows can never match and fall out.
+      const ease = r.greenRedImpactEase1m;
+      if (ease == null) return false;
+      if (f.easeThreshold > 0 && ease <= f.easeThreshold) return false;
+      if (f.easeThreshold < 0 && ease >= f.easeThreshold) return false;
     }
     if (f.shortInterestTrend && !matchesShortInterestTrend(
       interestBySymbol.get(r.symbol) ?? [],

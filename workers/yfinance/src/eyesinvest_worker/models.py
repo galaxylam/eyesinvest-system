@@ -92,9 +92,14 @@ class StockAnalyticsRow(BaseModel):
     #         day equally. See migration 0008.
     # share = sum(volume on up-bars) / (sum on up + sum on down) — weights
     #         high-volume days more heavily. See migration 0014.
-    # Dojis (close == open) are excluded from both.
+    # ease  = signed (up_impact − down_impact) / (up_impact + down_impact)
+    #         where each impact is Σ(close − open) / Σ(volume) on its side —
+    #         captures the classical "1 dollar pushes X% up vs Y% down"
+    #         push-efficiency theory. Range [-1, 1]. See migration 0017.
+    # Dojis (close == open) are excluded from all three.
     green_red_volume_ratio_1m: float | None = None
     green_red_volume_share_1m: float | None = None
+    green_red_impact_ease_1m: float | None = None
     rsi14: float | None = None
     macd_line: float | None = None
     macd_signal: float | None = None

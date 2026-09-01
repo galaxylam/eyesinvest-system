@@ -521,6 +521,13 @@ alter table public.ey_stock_analytics
 alter table public.ey_stock_analytics
   add column if not exists green_red_volume_share_1m numeric(6,4);
 
+-- ============================================================================
+-- Phase 3+ green/red impact ease (1M) — see 0017_green_red_impact_ease.sql
+-- ============================================================================
+
+alter table public.ey_stock_analytics
+  add column if not exists green_red_impact_ease_1m numeric(6,4);
+
 create index if not exists idx_ey_stock_analytics_squeeze_score
   on public.ey_stock_analytics (as_of_date desc, squeeze_score desc)
   where squeeze_score is not null;
