@@ -79,7 +79,8 @@ jobs:
     timeout-minutes: 90   # pipeline is per-market sequential; 90 min is the
                           # observed upper bound on a cold cache + slow FINRA.
     permissions:
-      contents: read       # only need to checkout
+      contents: read       # checkout
+      issues: write        # open sync-failure issue on failure
 
     steps:
       - name: Checkout
