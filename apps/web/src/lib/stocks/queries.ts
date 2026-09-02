@@ -98,6 +98,16 @@ interface QueryResult<T> {
  * Helper that runs a real Supabase query if available, else falls back to
  * the bundled mock data set. Keeps the rest of the app unaware of the
  * data source.
+ *
+ * On the Supabase path, a single retry is attempted before falling back
+ * to mock. The Python sync worker hit the same intermittent class of
+ * failures (HTTP/2 stream resets at Supabase's edge, brief gateway
+ * hiccups — see commits 1613ef0 / 555faa9) and recovered with a retry;
+ * the web side used to silently demote to mock on the first blip, which
+ * manifested to /screener users as "no results, refresh, results are
+ * back" — the mock universe is tiny so narrow filter combinations
+ * (`gs=0.4&ease=0.1&crowdlt=1&ret6mmax=0&ma20=down` etc.) often return
+ * zero rows against it.
  */
 async function withFallback<T>(
   fn: (client: SupabaseClient) => Promise<T>,
@@ -107,13 +117,22 @@ async function withFallback<T>(
   if (!client) {
     return { data: fallback(), source: 'mock' };
   }
-  try {
-    const data = await fn(client);
-    return { data, source: 'supabase' };
-  } catch (err) {
-    console.error('[queries] Supabase failed, using mock fallback:', err);
-    return { data: fallback(), source: 'mock' };
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const data = await fn(client);
+      return { data, source: 'supabase' };
+    } catch (err) {
+      lastErr = err;
+      if (attempt === 2) break;
+      console.warn(`[queries] Supabase attempt ${attempt} failed, retrying:`, err);
+      // Short backoff — long enough to ride out a single HTTP/2 stream
+      // reset, short enough to stay well under the RSC render budget.
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
   }
+  console.error('[queries] Supabase failed after retry, using mock fallback:', lastErr);
+  return { data: fallback(), source: 'mock' };
 }
 
 export async function getStockDetail(symbol: string): Promise<QueryResult<StockDetail | null>> {
