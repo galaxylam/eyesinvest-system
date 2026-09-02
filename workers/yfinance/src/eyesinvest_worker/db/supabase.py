@@ -6,6 +6,7 @@ import math
 from typing import Any
 
 import httpx
+from postgrest.constants import DEFAULT_POSTGREST_CLIENT_TIMEOUT
 from supabase import Client, create_client
 from supabase.lib.client_options import SyncClientOptions
 
@@ -75,7 +76,19 @@ def make_client(url: str, key: str) -> Client:
     # We pass our own httpx.Client with http2=False; postgrest uses it
     # as-is, and `Authorization` + per-request headers are still merged
     # in by the request builder, so auth still works.
-    http_client = httpx.Client(http2=False, follow_redirects=True)
+    #
+    # IMPORTANT: when postgrest builds its own httpx.Client it applies
+    # `timeout=120` (DEFAULT_POSTGREST_CLIENT_TIMEOUT). When we supply
+    # our own client, postgrest skips that step — so the httpx default
+    # 5s timeout applies to every request. After ~20 minutes of
+    # sustained traffic, Supabase occasionally takes >5s to respond and
+    # the run dies with `httpx.ReadTimeout`. Set the same 120s timeout
+    # here to match the default we'd otherwise get.
+    http_client = httpx.Client(
+        http2=False,
+        follow_redirects=True,
+        timeout=DEFAULT_POSTGREST_CLIENT_TIMEOUT,
+    )
     return create_client(url, key, options=SyncClientOptions(httpx_client=http_client))
 
 
