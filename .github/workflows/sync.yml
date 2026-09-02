@@ -7,8 +7,8 @@
 #                        market close so yfinance daily bars are stable and
 #                        FINRA T+1 short-sale data for the prior trading day
 #                        is in.
-#   * `0 1 * * 2-6`    — HK (all-hk):  runs at 01:00 UTC Tue-Sat
-#                        = 09:00 HKT Mon-Fri, ~17 hours after HK market close
+#   * `0 21 * * 1-5`   — HK (all-hk):  runs at 21:00 UTC Mon-Fri
+#                        = 05:00 HKT Tue-Sat, ~13 hours after HK market close
 #                        so yfinance HK bars are stable and the SFC weekly
 #                        short-interest CSV (published Mondays) is in.
 #
@@ -30,7 +30,7 @@ name: Sync market data
 on:
   schedule:
     - cron: '30 21 * * 1-5'   # US, weekdays
-    - cron: '0 1 * * 2-6'     # HK, Tue-Sat UTC (= Mon-Fri HKT)
+    - cron: '0 21 * * 1-5'    # HK, Mon-Fri UTC (= Tue-Sat HKT @ 05:00)
   workflow_dispatch:
     inputs:
       mode:
@@ -113,11 +113,12 @@ jobs:
           else
             # Cron schedules are in UTC; the *reason* for each schedule picks
             # the market (see header comments). Identify which cron fired by
-            # checking which weekday/time the trigger maps to.
+            # checking which minute-of-hour the trigger maps to — both
+            # windows now sit in hour 21 (US at :30, HK at :00).
             #
-            # Heuristic: 21:30 UTC = US window; 01:00 UTC = HK window.
-            hour=$(date -u +%-H)
-            if [ "$hour" = "21" ]; then
+            # Heuristic: 21:30 UTC = US; 21:00 UTC = HK.
+            minute=$(date -u +%-M)
+            if [ "$minute" = "30" ]; then
               echo "value=us" >> "$GITHUB_OUTPUT"
             else
               echo "value=hk" >> "$GITHUB_OUTPUT"
