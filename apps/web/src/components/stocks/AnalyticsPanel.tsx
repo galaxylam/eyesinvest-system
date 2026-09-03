@@ -85,9 +85,10 @@ export async function AnalyticsPanel({ currency, analytics }: AnalyticsPanelProp
       <div className="border-t border-border px-5 pt-4 text-2xs uppercase tracking-wide text-fg-subtle">
         Risk
       </div>
-      <dl className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-2">
+      <dl className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-3">
         <Stat label={t('indicator.volatility30d')} value={fmtPctRaw(analytics?.volatility30d ?? null)} />
         <Stat label={t('indicator.maxDrawdown30d')} value={fmtPctRaw(analytics?.maxDrawdown30d ?? null)} />
+        <Stat label={t('indicator.maxDrawdown60d')} value={fmtPctRaw(analytics?.maxDrawdown60d ?? null)} />
       </dl>
 
       {/* Returns */}

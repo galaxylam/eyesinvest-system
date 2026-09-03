@@ -25,6 +25,9 @@ export interface StockAnalytics {
   volatility30d: number | null;
   /** Max drawdown over the last 30 trading days (negative fraction). */
   maxDrawdown30d: number | null;
+  /** Max drawdown over the last 60 trading days (negative fraction). Sibling of
+   *  `maxDrawdown30d` — medium-term mirror used by the screener and Risk panel. */
+  maxDrawdown60d: number | null;
   return1m: number | null;
   return3m: number | null;
   return6m: number | null;

@@ -331,6 +331,11 @@ export interface ScreenerRow {
    *  history. Used by the "already pulled back" filter — see
    *  `ScreenerFilters.drawdown30dMax`. */
   drawdown30d: number | null;
+  /** Trailing 60d max drawdown as (lastClose − 60dPeak) ÷ 60dPeak. Negative
+   *  fraction, e.g. −0.22 = 22% below the 60d peak. Null until ≥60 days of
+   *  history. Used by the "60D pullback" filter — see
+   *  `ScreenerFilters.drawdown60dMax`. Sibling of `drawdown30d`. */
+  drawdown60d: number | null;
   /** Signed delta of ma5 vs the prior trading day. Null on the first row of the series. */
   ma5Slope: number | null;
   /** Signed delta of ma20 vs the prior trading day. Null on the first row of the series. */
@@ -403,6 +408,11 @@ export interface ScreenerFilters {
    *  least 10% off the 30-day peak"). Matches the
    *  `ScreenerRow.drawdown30d` sign convention — nulls are excluded. */
   drawdown30dMax?: number;
+  /** Upper bound on 60-day drawdown (negative fraction, e.g. −0.10 = "at
+   *  least 10% off the 60-day peak"). Matches the
+   *  `ScreenerRow.drawdown60d` sign convention — nulls are excluded. Sibling
+   *  of `drawdown30dMax`. */
+  drawdown60dMax?: number;
   /** Lower bound on volume efficiency (ratio, e.g. 1 = ≥1×). */
   volumeEfficiencyMin?: number;
   /** Lower bound on crowded ratio (MA5÷MA30, e.g. 1.5 = ≥1.5×). */

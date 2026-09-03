@@ -278,6 +278,11 @@ create table if not exists public.ey_stock_analytics (
   -- 30-day max drawdown (peak-to-trough), as negative fraction (e.g. -0.12 = -12%)
   max_drawdown_30d    numeric(10,6),
 
+  -- 60-day max drawdown (peak-to-trough), as negative fraction (e.g. -0.18 = -18%).
+  -- Sibling of max_drawdown_30d — used by the "60D pullback" screener filter and the
+  -- Risk panel "60-day max drawdown" stat. Nullable until ≥60 trading days of history.
+  max_drawdown_60d    numeric(10,6),
+
   -- Trailing returns over calendar windows (close / close - 1)
   return_1m           numeric(10,6),
   return_3m           numeric(10,6),

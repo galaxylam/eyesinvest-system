@@ -103,6 +103,8 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
     // instead of `dd30=-0.1` — friendlier for hand-edits / sharing.
     if (next.drawdown30dMax != null) params.set('dd30', String(Math.round(next.drawdown30dMax * 100)));
     else params.delete('dd30');
+    if (next.drawdown60dMax != null) params.set('dd60', String(Math.round(next.drawdown60dMax * 100)));
+    else params.delete('dd60');
     if (next.volumeEfficiencyMin != null) params.set('eff', String(next.volumeEfficiencyMin));
     else params.delete('eff');
     if (next.crowdedRatioMin != null) params.set('crowd', String(next.crowdedRatioMin));
@@ -330,6 +332,29 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
           { value: '-30', label: t('filter.dd30LE30') },
           { value: '-40', label: t('filter.dd30LE40') },
           { value: '-50', label: t('filter.dd30LE50') },
+        ]}
+      />
+      <SelectField
+        label={t('filter.drawdown60dMax')}
+        value={
+          pendingFilters.drawdown60dMax == null
+            ? ''
+            : String(Math.round(pendingFilters.drawdown60dMax * 100))
+        }
+        onChange={(v) =>
+          setPendingFilters({
+            ...pendingFilters,
+            drawdown60dMax: v === '' ? undefined : Number(v) / 100,
+          })
+        }
+        disabled={pending}
+        options={[
+          { value: '', label: t('filter.any') },
+          { value: '-10', label: t('filter.dd60LE10') },
+          { value: '-20', label: t('filter.dd60LE20') },
+          { value: '-30', label: t('filter.dd60LE30') },
+          { value: '-40', label: t('filter.dd60LE40') },
+          { value: '-50', label: t('filter.dd60LE50') },
         ]}
       />
       <SelectField
@@ -629,6 +654,7 @@ function hasAnyFilters(f: ScreenerFilters): boolean {
     f.return3mMax != null ||
     f.return6mMax != null ||
     f.drawdown30dMax != null ||
+    f.drawdown60dMax != null ||
     f.volumeEfficiencyMin != null ||
     f.crowdedRatioMin != null ||
     f.crowdedRatioMax != null ||
@@ -649,7 +675,7 @@ function sameFilters(a: ScreenerFilters, b: ScreenerFilters): boolean {
   const keys: (keyof ScreenerFilters)[] = [
     'market', 'sector', 'marketCapMin', 'peMax', 'yieldMin',
     'return1mMin', 'return1mMax', 'return3mMax', 'return6mMax',
-    'drawdown30dMax', 'volumeEfficiencyMin', 'crowdedRatioMin',
+    'drawdown30dMax', 'drawdown60dMax', 'volumeEfficiencyMin', 'crowdedRatioMin',
     'crowdedRatioMax', 'squeezeMin', 'ma5Trend', 'ma20Trend',
     'greenShareThreshold', 'easeThreshold', 'shortInterestTrend', 'breakout',
   ];

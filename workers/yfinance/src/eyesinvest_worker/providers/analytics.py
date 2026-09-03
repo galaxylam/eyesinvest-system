@@ -462,6 +462,7 @@ def compute_analytics(
 
     df["volatility_30d"] = _annualized_vol(close, 30)
     df["max_drawdown_30d"] = _max_drawdown(close, 30)
+    df["max_drawdown_60d"] = _max_drawdown(close, 60)
 
     df["return_1w"] = _return_n(close, 5)    # ~1 calendar week in trading days
     df["return_1m"] = _return_n(close, 21)   # ~1 calendar month in trading days
@@ -538,6 +539,7 @@ def compute_analytics(
                 macd_hist=_maybe_float(r.get("macd_hist")),
                 volatility_30d=_maybe_float(r.get("volatility_30d")),
                 max_drawdown_30d=_maybe_float(r.get("max_drawdown_30d")),
+                max_drawdown_60d=_maybe_float(r.get("max_drawdown_60d")),
                 return_1m=_maybe_float(r.get("return_1m")),
                 return_3m=_maybe_float(r.get("return_3m")),
                 return_6m=_maybe_float(r.get("return_6m")),

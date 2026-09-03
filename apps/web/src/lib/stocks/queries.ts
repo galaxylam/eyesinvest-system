@@ -525,7 +525,7 @@ export async function getStockAnalytics(
         .from('ey_stock_analytics')
         .select(
           'as_of_date, ma20, ma50, ma200, rsi14, macd_line, macd_signal, macd_hist, ' +
-            'volatility_30d, max_drawdown_30d, return_1m, return_3m, return_6m, return_1y, return_1w, ' +
+            'volatility_30d, max_drawdown_30d, max_drawdown_60d, return_1m, return_3m, return_6m, return_1y, return_1w, ' +
             'volume_efficiency, crowded_ratio, green_red_volume_ratio_1m, green_red_volume_share_1m, green_red_impact_ease_1m, relative_strength',
         )
         .eq('stock_id', stockRow.id)
@@ -572,6 +572,7 @@ export async function getStockAnalytics(
         macd_hist: number | null;
         volatility_30d: number | null;
         max_drawdown_30d: number | null;
+        max_drawdown_60d: number | null;
         return_1m: number | null;
         return_3m: number | null;
         return_6m: number | null;
@@ -600,6 +601,7 @@ export async function getStockAnalytics(
             macdHist: num(r.macd_hist),
             volatility30d: num(r.volatility_30d),
             maxDrawdown30d: num(r.max_drawdown_30d),
+            maxDrawdown60d: num(r.max_drawdown_60d),
             return1m: num(r.return_1m),
             return3m: num(r.return_3m),
             return6m: num(r.return_6m),
@@ -1199,7 +1201,7 @@ export async function getScreenerRows(
           idChunks.map((chunk) =>
             supabase.from('ey_stock_analytics').select(
               'stock_id, as_of_date, return_1m, return_3m, return_6m, return_1y, ' +
-                'volume_efficiency, crowded_ratio, max_drawdown_30d, ma5_slope, ma20_slope, ' +
+                'volume_efficiency, crowded_ratio, max_drawdown_30d, max_drawdown_60d, ma5_slope, ma20_slope, ' +
                 'green_red_volume_ratio_1m, green_red_volume_share_1m, green_red_impact_ease_1m, squeeze_score',
             ).in('stock_id', chunk).order('as_of_date', { ascending: false }),
           ),
@@ -1250,6 +1252,7 @@ export async function getScreenerRows(
         return_1m: number | null; return_3m: number | null; return_6m: number | null; return_1y: number | null;
         volume_efficiency: number | null; crowded_ratio: number | null;
         max_drawdown_30d: number | null;
+        max_drawdown_60d: number | null;
         ma5_slope: number | null; ma20_slope: number | null; green_red_volume_ratio_1m: number | null;
         green_red_volume_share_1m: number | null; green_red_impact_ease_1m: number | null;
         squeeze_score: number | null;
@@ -1259,6 +1262,7 @@ export async function getScreenerRows(
         return_1m: number | null; return_3m: number | null; return_6m: number | null; return_1y: number | null;
         volume_efficiency: number | null; crowded_ratio: number | null;
         max_drawdown_30d: number | null;
+        max_drawdown_60d: number | null;
         ma5_slope: number | null; ma20_slope: number | null; green_red_volume_ratio_1m: number | null;
         green_red_volume_share_1m: number | null; green_red_impact_ease_1m: number | null;
         squeeze_score: number | null;
@@ -1335,6 +1339,7 @@ export async function getScreenerRows(
           volumeEfficiencyToday: a ? num(a.volume_efficiency) : null,
           crowdedRatio: a ? num(a.crowded_ratio) : null,
           drawdown30d: a ? num(a.max_drawdown_30d) : null,
+          drawdown60d: a ? num(a.max_drawdown_60d) : null,
           ma5Slope: a ? num(a.ma5_slope) : null,
           ma20Slope: a ? num(a.ma20_slope) : null,
           greenRedVolumeRatio1m: a ? num(a.green_red_volume_ratio_1m) : null,
@@ -1686,6 +1691,15 @@ function applyScreenerFilters(
     if (
       f.drawdown30dMax != null &&
       (r.drawdown30d == null || r.drawdown30d > f.drawdown30dMax)
+    ) {
+      return false;
+    }
+    // 60d-drawdown upper bound: same sign convention as 30d — `drawdown60d`
+    // is a negative fraction, so the threshold is also negative (`−0.20` =
+    // "at least 20% off 60d peak"). Nulls are excluded.
+    if (
+      f.drawdown60dMax != null &&
+      (r.drawdown60d == null || r.drawdown60d > f.drawdown60dMax)
     ) {
       return false;
     }

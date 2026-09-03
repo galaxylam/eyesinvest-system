@@ -30,6 +30,9 @@ interface ScreenerPageProps {
     /** Upper bound on 30d drawdown (negative fraction as a percent, e.g.
      *  -10 = "at least 10% off the 30d peak"). */
     dd30?: string;
+    /** Upper bound on 60d drawdown (negative fraction as a percent, e.g.
+     *  -20 = "at least 20% off the 60d peak"). */
+    dd60?: string;
     eff?: string;
     crowd?: string;
     /** Crowded ratio upper bound — currently only '1' for the "<1×" subdued filter. */
@@ -104,6 +107,11 @@ function parseFilters(sp: Awaited<ScreenerPageProps['searchParams']>): ScreenerF
   if (sp.dd30) {
     const n = Number(sp.dd30);
     if (Number.isFinite(n) && n <= 0) f.drawdown30dMax = n / 100;
+  }
+  // dd60 uses the same percent-integer encoding as dd30.
+  if (sp.dd60) {
+    const n = Number(sp.dd60);
+    if (Number.isFinite(n) && n <= 0) f.drawdown60dMax = n / 100;
   }
   if (sp.eff) {
     const n = Number(sp.eff);

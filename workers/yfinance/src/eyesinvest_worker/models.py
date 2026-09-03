@@ -106,6 +106,7 @@ class StockAnalyticsRow(BaseModel):
     macd_hist: float | None = None
     volatility_30d: float | None = None
     max_drawdown_30d: float | None = None
+    max_drawdown_60d: float | None = None
     return_1m: float | None = None
     return_3m: float | None = None
     return_6m: float | None = None

@@ -407,6 +407,20 @@ function computeIndicatorsAt(
     maxDrawdown30d = +worst.toFixed(4);
   }
 
+  // Max drawdown — last 60-day window peak-to-trough (60D pullback sibling).
+  let maxDrawdown60d: number | null = null;
+  if (closes.length >= 2) {
+    const slice = closes.slice(-60);
+    let peak = slice[0] ?? 0;
+    let worst = 0;
+    for (const v of slice) {
+      if (v > peak) peak = v;
+      const dd = v / peak - 1;
+      if (dd < worst) worst = dd;
+    }
+    maxDrawdown60d = +worst.toFixed(4);
+  }
+
   const ret = (days: number): number | null => {
     if (closes.length <= days) return null;
     const past = closes[closes.length - 1 - days] ?? last;
@@ -529,6 +543,7 @@ function computeIndicatorsAt(
     macdHist,
     volatility30d,
     maxDrawdown30d,
+    maxDrawdown60d,
     return1w,
     return1m,
     return3m,
@@ -1203,6 +1218,7 @@ function buildMockScreenerRow(symbol: string): ScreenerRow | null {
     volumeEfficiencyToday: efficiency?.efficiencyToday ?? null,
     crowdedRatio: crowded?.ratio ?? null,
     drawdown30d: latest?.maxDrawdown30d ?? null,
+    drawdown60d: latest?.maxDrawdown60d ?? null,
     ma5Slope: latest?.ma5Slope ?? null,
     ma20Slope: latest?.ma20Slope ?? null,
     greenRedVolumeRatio1m: latest?.greenRedVolumeRatio1m ?? null,
