@@ -1,16 +1,21 @@
 # ============================================================================
 # Daily market-data sync — replaces local `pnpm worker:sync` invocations.
 #
-# Two scheduled triggers (UTC):
-#   * `30 21 * * 1-5`  — US (all-us):  runs at 21:30 UTC Mon-Fri
-#                        = 16:30 ET (EST) / 17:30 ET (EDT), 30 min after US
-#                        market close so yfinance daily bars are stable and
-#                        FINRA T+1 short-sale data for the prior trading day
-#                        is in.
-#   * `0 21 * * 1-5`   — HK (all-hk):  runs at 21:00 UTC Mon-Fri
-#                        = 05:00 HKT Tue-Sat, ~13 hours after HK market close
-#                        so yfinance HK bars are stable and the SFC weekly
-#                        short-interest CSV (published Mondays) is in.
+# Three scheduled triggers (UTC):
+#   * `0 23 * * 1-5`   — US (all-us):  runs at 23:00 UTC Mon-Fri
+#                        = 07:00 HKT Tue-Sat, ~6 hours after US market close
+#                        (21:00 UTC EST / 22:00 UTC EDT) so yfinance daily bars
+#                        are stable and FINRA T+1 short-sale data for the prior
+#                        trading day is in.
+#   * `0 10 * * 1-5`   — HK (all-hk):  runs at 10:00 UTC Mon-Fri
+#                        = 18:00 HKT Mon-Fri, 2 hours after HK market close
+#                        (08:00 UTC = 16:00 HKT) so yfinance HK bars are
+#                        stable.
+#   * `0 0 * * 1`      — HK (all-hk):  extra Mon-only run at 00:00 UTC
+#                        = 08:00 HKT Mon. Purpose: catch the SFC weekly
+#                        short-interest CSV the moment it publishes on
+#                        Monday, so the data is in the database well before
+#                        the regular 18:00 HKT HK run later that day.
 #
 # Manual runs:
 #   Actions tab → "Sync market data" → Run workflow → pick market.
@@ -29,8 +34,9 @@ name: Sync market data
 
 on:
   schedule:
-    - cron: '30 21 * * 1-5'   # US, weekdays
-    - cron: '0 21 * * 1-5'    # HK, Mon-Fri UTC (= Tue-Sat HKT @ 05:00)
+    - cron: '0 23 * * 1-5'    # US, weekdays
+    - cron: '0 10 * * 1-5'    # HK, Mon-Fri UTC (= Mon-Fri HKT @ 18:00)
+    - cron: '0 0 * * 1'       # HK extra, Mon-only UTC (= Mon HKT @ 08:00) for SFC CSV
   workflow_dispatch:
     inputs:
       mode:
@@ -113,12 +119,13 @@ jobs:
           else
             # Cron schedules are in UTC; the *reason* for each schedule picks
             # the market (see header comments). Identify which cron fired by
-            # checking which minute-of-hour the trigger maps to — both
-            # windows now sit in hour 21 (US at :30, HK at :00).
+            # hour-of-day — US fires at hour 23 UTC (07:00 HKT next day).
+            # HK fires at hour 0 UTC (08:00 HKT Mon, SFC) and hour 10 UTC
+            # (18:00 HKT Mon-Fri, regular); both map to HK below.
             #
-            # Heuristic: 21:30 UTC = US; 21:00 UTC = HK.
-            minute=$(date -u +%-M)
-            if [ "$minute" = "30" ]; then
+            # Heuristic: hour 23 UTC = US; everything else (0, 10) = HK.
+            hour=$(date -u +%-H)
+            if [ "$hour" = "23" ]; then
               echo "value=us" >> "$GITHUB_OUTPUT"
             else
               echo "value=hk" >> "$GITHUB_OUTPUT"
