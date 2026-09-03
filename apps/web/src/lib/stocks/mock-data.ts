@@ -504,15 +504,12 @@ function computeIndicatorsAt(
     }
     const total = greenSum + redSum;
     if (total > 0) {
-      // Signed encoding mirroring the worker: positive when green
-      // dominant (magnitude = green share), negative when red dominant
-      // (magnitude = red share = 1 - green share). Sign carries the
-      // colour zone so the screener's filter never misclassifies a row.
-      const greenShare = greenSum / total;
-      greenRedVolumeShare1m =
-        greenShare >= 0.5
-          ? +greenShare.toFixed(4)
-          : -(+(1 - greenShare).toFixed(4));
+      // Linear signed net lean mirroring the worker:
+      //   net = (sum vol up − sum vol down) ÷ total
+      // Sign carries the colour zone (> 0 green-leaning, < 0 red-leaning),
+      // magnitude carries distance from balanced (0 = balanced, ±1 = one-sided).
+      const net = (greenSum - redSum) / total;
+      greenRedVolumeShare1m = +net.toFixed(4);
     }
     // 1M impact ease — mirrors `_green_red_impact_ease_1m` in the worker.
     // Same 21-day window as share. Up/down impacts are volume-weighted

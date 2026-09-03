@@ -158,35 +158,34 @@ def _green_red_volume_ratio_1m(
 def _green_red_volume_share_1m(
     open_: pd.Series, close: pd.Series, volume: pd.Series, window: int = 21,
 ) -> pd.Series:
-    """Trailing-21-day signed share of total volume on the dominant side.
+    """Trailing-21-day linear signed net lean in [-1, 1].
 
-        green_share = sum(volume on up-bars) / (sum on up + sum on down)
+        net = (sum(volume on up-bars) − sum(volume on down-bars))
+              / (sum on up + sum on down)
 
-    Signed so the sign carries the colour zone and the magnitude carries
-    how decisively one side is winning:
+    Single signed value where:
+      * sign carries the colour zone:  > 0 → green-leaning, < 0 → red-leaning
+      * magnitude carries how far from balanced: 0 = perfectly balanced,
+        ±1 = one-sided window (all volume on green or all on red bars)
 
-      * share >= 0.5 (green dominant) → result = +green_share
-      * share  < 0.5 (red   dominant) → result = -red_share
+    Range [-1, 1]. NaN when the window has no up or no down bars
+    (no green-or-red signal to lean against) — those rows render as `—`
+    on the stocks-page pill rather than as a misleading "0%".
 
-    Range [-1, 1] (was [0, 1]). NaN when the window has no up or no down
-    bars (no green-or-red signal to share against).
+    Differs from the previous magnitude-of-dominant encoding in that the
+    full range is used: a stock drifting from 55% green → 45% green now
+    actually crosses zero, instead of snapping from +0.55 to −0.55 with
+    no values in between. Sign flips at the balance point.
 
-    The sign is what the screener and stocks page compare to classify a
-    row as "in green" (value > 0) or "in red" (value < 0), and the
-    magnitude is the side that's winning — so "> +50%" means
-    green-share > 50% (strong green) and "< -50%" means red-share > 50%
-    (strong red). A row that's "in red" can never appear under a green
-    filter option (or vice-versa) regardless of the threshold.
+    Differs from `_green_red_volume_ratio_1m` (avg_green / avg_red) by
+    weighting: a single huge-volume day moves `share` more than `ratio`.
+    Both metrics are complementary.
+
+    Dojis (close == open) are excluded from both sides; they don't move
+    the price and shouldn't move the lean either.
 
     Window matches the stocks page Range picker's "1M" definition
     (RANGE_DAYS['1M'] = 21 trading days).
-
-    Differs from `_green_red_volume_ratio_1m` (avg_green / avg_red) by
-    weighting: a single huge-volume day moves `share` dramatically but
-    barely moves `ratio`. Both metrics are complementary.
-
-    Dojis (close == open) are excluded from both sides; they don't move
-    the price and shouldn't move the share either.
     """
     is_green = (close > open_).astype(float)
     is_red = (close < open_).astype(float)
@@ -194,14 +193,8 @@ def _green_red_volume_share_1m(
     red_vol_sum = (volume * is_red).rolling(window, min_periods=window).sum()
     total = green_vol_sum + red_vol_sum
     # total == 0 → window was all dojis / missing volume; NaN propagates.
-    green_share = green_vol_sum / total.replace(0, np.nan)
-    # Sign: +1 when green dominant, -1 when red dominant. Magnitude is the
-    # dominant side's share (green_share for green-dominant, 1-green_share
-    # for red-dominant). Boundary (== 0.5) counts as green-dominant to
-    # preserve the old `>= 0.5` classification.
-    sign = np.where(green_share >= 0.5, 1.0, -1.0)
-    magnitude = np.where(green_share >= 0.5, green_share, 1.0 - green_share)
-    return pd.Series(sign * magnitude, index=green_share.index)
+    net = (green_vol_sum - red_vol_sum) / total.replace(0, np.nan)
+    return pd.Series(net, index=green_vol_sum.index)
 
 
 def _green_red_impact_ease_1m(

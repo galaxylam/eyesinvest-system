@@ -39,7 +39,7 @@ export interface StockAnalytics {
   crowdedRatio: number | null;
   /** Trailing 21-day mean(volume on close>open bars) ÷ mean(volume on close<open bars). Null until 21 days of history. >1 = green bars traded more, <1 = red bars traded more. Drives the screener "1M green ≥ N% higher than red" filter. */
   greenRedVolumeRatio1m: number | null;
-  /** Trailing 21-day SIGNED green share in [-1, 1]. Positive when green dominant (magnitude = green share); negative when red dominant (magnitude = red share). Null until 21 days of history or when the window has no up-or-down signal. The sign carries the colour zone, the magnitude carries how decisively one side is winning — so the screener filter `> +50%` matches green share > 50% and `< -50%` matches red share > 50%. Window matches the stocks page Range picker "1M" so the two surfaces agree. */
+  /** Trailing 21-day LINEAR signed green share in [-1, 1]: (sum vol on up-bars − sum vol on down-bars) ÷ total vol. Sign carries the colour zone (> 0 green-leaning, < 0 red-leaning); magnitude carries how far from balanced (0 = balanced, ±1 = one-sided window). Null until 21 days of history or when the window has no up-or-down signal. The full range is used — a stock drifting from 55% green → 45% green actually crosses zero, so the value tracks regime changes around balance. Window matches the stocks page Range picker "1M" so the two surfaces agree. */
   greenRedVolumeShare1m: number | null;
   /** Trailing 21-day SIGNED ease-of-push score in [-1, 1].
    *  up_impact   = Σ(close − open) / Σ(volume)   on close>open bars

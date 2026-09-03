@@ -110,12 +110,14 @@ export function VolumeEfficiencyChart({
   // `windowed` series so the pill tracks the visible picker range, same
   // as `greenAvg` / `redAvg`. Dojis (change == 0) are excluded.
   //
-  // Signed encoding mirrors the worker's `_green_red_volume_share_1m`:
-  // positive when green dominant (magnitude = green share), negative
-  // when red dominant (magnitude = red share). The 1M picker uses a
-  // 21-day window, so this value matches `signedShare1m` (and the
-  // screener) within floating-point noise — the displayed rounded
-  // percent is the same.
+  // Linear signed net lean mirroring the worker's
+  // `_green_red_volume_share_1m`:
+  //   net = (sum vol up − sum vol down) ÷ (sum vol up + sum vol down)
+  // Sign carries the colour zone (> 0 green-leaning, < 0 red-leaning);
+  // magnitude carries distance from balanced (0 = balanced, ±1 =
+  // one-sided window). The 1M picker uses a 21-day window, so this
+  // value matches `signedShare1m` (and the screener) within floating-
+  // point noise — the displayed rounded percent is the same.
   const greenShare = useMemo(() => {
     let greenSum = 0;
     let redSum = 0;
@@ -126,8 +128,7 @@ export function VolumeEfficiencyChart({
     }
     const total = greenSum + redSum;
     if (total <= 0) return null;
-    const gs = greenSum / total;
-    return gs >= 0.5 ? gs : -(1 - gs);
+    return (greenSum - redSum) / total;
   }, [windowed]);
 
   // Push/pull ease — companion pill to `greenShare` above. Captures the

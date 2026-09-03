@@ -132,9 +132,11 @@ function parseFilters(sp: Awaited<ScreenerPageProps['searchParams']>): ScreenerF
   if (sp.ma5 === 'up' || sp.ma5 === 'down') f.ma5Trend = sp.ma5;
   if (sp.ma20 === 'up' || sp.ma20 === 'down') f.ma20Trend = sp.ma20;
   // 1M green/red share: encoding is a single signed number — `gs=0.5` means
-  // `>+50%` (in green, share > 0.5), `gs=-0.4` means `<-40%` (in red,
-  // share < -0.4). Anything outside the discrete allow-list is silently
-  // ignored so a hand-edited URL doesn't 500 the page.
+  // `>+50%` (green share > 0.5, displayed as "+50.0%" on the pill),
+  // `gs=-0.4` means `<-40%` (red share < −0.4, displayed as "−40.0%").
+  // Magnitude maps directly to percent: 0.1 → 10%, 0.5 → 50%, −0.4 → −40%.
+  // Anything outside the discrete allow-list is silently ignored so a
+  // hand-edited URL doesn't 500 the page.
   if (sp.gs) {
     const n = Number(sp.gs);
     const allowed = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, -0.1, -0.2, -0.3, -0.4, -0.5, -0.6];
