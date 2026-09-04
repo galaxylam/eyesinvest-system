@@ -6,7 +6,6 @@ import {
   formatPrice,
   formatRatio,
   formatSignedPercent,
-  formatVolume,
 } from '@/lib/format/quote';
 import { SignedNumber } from '@/components/stocks/SignedNumber';
 import type {
@@ -32,14 +31,10 @@ interface ColumnSpec {
     | 'col.market'
     | 'col.price'
     | 'col.change'
-    | 'col.volume'
     | 'col.marketCap'
-    | 'col.pe'
-    | 'col.yield'
-    | 'col.return1m'
-    | 'col.efficiency'
-    | 'col.crowded'
-    | 'col.squeeze';
+    | 'col.volFavour1m'
+    | 'col.ease1m'
+    | 'col.crowded';
   align?: 'left' | 'right';
 }
 
@@ -48,14 +43,10 @@ const COLUMNS: ColumnSpec[] = [
   { sortColumn: null, labelKey: 'col.market' },
   { sortColumn: null, labelKey: 'col.price', align: 'right' },
   { sortColumn: 'changePercent', labelKey: 'col.change', align: 'right' },
-  { sortColumn: 'volume', labelKey: 'col.volume', align: 'right' },
-  { sortColumn: 'marketCap', labelKey: 'col.marketCap', align: 'right' },
-  { sortColumn: 'peRatio', labelKey: 'col.pe', align: 'right' },
-  { sortColumn: 'dividendYield', labelKey: 'col.yield', align: 'right' },
-  { sortColumn: 'return1m', labelKey: 'col.return1m', align: 'right' },
-  { sortColumn: null, labelKey: 'col.efficiency', align: 'right' },
+  { sortColumn: null, labelKey: 'col.marketCap', align: 'right' },
+  { sortColumn: null, labelKey: 'col.volFavour1m', align: 'right' },
+  { sortColumn: null, labelKey: 'col.ease1m', align: 'right' },
   { sortColumn: null, labelKey: 'col.crowded', align: 'right' },
-  { sortColumn: 'squeezeScore', labelKey: 'col.squeeze', align: 'right' },
 ];
 
 /**
@@ -188,35 +179,39 @@ function Row({
         </SignedNumber>
       </td>
       <td className="px-3 py-2 text-right tabular font-mono text-2xs text-fg-muted">
-        {formatVolume(row.volume, locale)}
-      </td>
-      <td className="px-3 py-2 text-right tabular font-mono text-2xs text-fg-muted">
         {formatMarketCap(row.marketCap, locale)}
-      </td>
-      <td className="px-3 py-2 text-right tabular font-mono text-2xs text-fg-muted">
-        {row.peRatio != null ? row.peRatio.toFixed(2) : '—'}
-      </td>
-      <td className="px-3 py-2 text-right tabular font-mono text-2xs text-fg-muted">
-        {row.dividendYield != null ? `${(row.dividendYield * 100).toFixed(2)}%` : '—'}
-      </td>
-      <td className="px-3 py-2 text-right">
-        <SignedNumber value={row.return1m} className="text-2xs">
-          {row.return1m != null ? formatSignedPercent(row.return1m, locale) : '—'}
-        </SignedNumber>
       </td>
       <td
         className={clsx(
           'px-3 py-2 text-right tabular font-mono text-2xs',
-          row.volumeEfficiencyToday == null
+          row.greenRedVolumeShare1m == null
             ? 'text-fg-subtle'
-            : row.volumeEfficiencyToday >= 2
+            : row.greenRedVolumeShare1m > 0
               ? 'text-emerald-500'
-              : row.volumeEfficiencyToday >= 1
-                ? 'text-fg'
+              : row.greenRedVolumeShare1m < 0
+                ? 'text-rose-500'
                 : 'text-fg-muted',
         )}
       >
-        {formatRatio(row.volumeEfficiencyToday)}
+        {row.greenRedVolumeShare1m != null
+          ? `${row.greenRedVolumeShare1m > 0 ? '+' : ''}${(row.greenRedVolumeShare1m * 100).toFixed(1)}%`
+          : '—'}
+      </td>
+      <td
+        className={clsx(
+          'px-3 py-2 text-right tabular font-mono text-2xs',
+          row.greenRedImpactEase1m == null
+            ? 'text-fg-subtle'
+            : row.greenRedImpactEase1m > 0
+              ? 'text-emerald-500'
+              : row.greenRedImpactEase1m < 0
+                ? 'text-rose-500'
+                : 'text-fg-muted',
+        )}
+      >
+        {row.greenRedImpactEase1m != null
+          ? `${row.greenRedImpactEase1m > 0 ? '+' : ''}${(row.greenRedImpactEase1m * 100).toFixed(1)}%`
+          : '—'}
       </td>
       <td
         className={clsx(
@@ -232,21 +227,6 @@ function Row({
         )}
       >
         {formatRatio(row.crowdedRatio)}
-      </td>
-      <td
-        className={clsx(
-          'px-3 py-2 text-right tabular font-mono text-2xs',
-          (() => {
-            const s = row.squeezeScore;
-            if (s == null) return 'text-fg-subtle';
-            // Mirror SqueezeCard regime bands: ≥70 rose, ≥50 amber, else fg.
-            if (s >= 70) return 'text-rose-500';
-            if (s >= 50) return 'text-amber-500';
-            return 'text-fg';
-          })(),
-        )}
-      >
-        {row.squeezeScore == null ? '—' : Math.round(row.squeezeScore)}
       </td>
     </tr>
   );

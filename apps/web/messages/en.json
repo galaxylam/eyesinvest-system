@@ -143,6 +143,16 @@
     "empty": "No stocks match the current filters.",
     "demoBanner": "Showing demo data — live feed unavailable.",
     "loading": "Loading results…",
+    "col": {
+      "symbol": "Symbol",
+      "market": "Market",
+      "price": "Price",
+      "change": "Change",
+      "marketCap": "Mkt cap",
+      "volFavour1m": "1M Vol. Favour",
+      "ease1m": "1M Ease",
+      "crowded": "Crowd"
+    },
     "filter": {
       "title": "Filters",
       "expand": "Expand filters",

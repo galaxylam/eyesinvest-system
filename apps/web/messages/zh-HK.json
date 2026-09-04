@@ -142,6 +142,16 @@
     "count": "顯示 {count, plural, =0 {無股票} one {1 個} other {{count} 個}}股票",
     "empty": "目前篩選條件下沒有任何股票。",
     "loading": "正在載入結果…",
+    "col": {
+      "symbol": "代碼",
+      "market": "市場",
+      "price": "價格",
+      "change": "漲跌",
+      "marketCap": "市值",
+      "volFavour1m": "1M 成交量偏好",
+      "ease1m": "1M 推動難易",
+      "crowded": "擁擠度"
+    },
     "filter": {
       "title": "篩選",
       "expand": "展開篩選",

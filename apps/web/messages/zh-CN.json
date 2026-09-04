@@ -142,6 +142,16 @@
     "count": "显示 {count, plural, =0 {无股票} one {1 个} other {{count} 个}}股票",
     "empty": "目前筛选条件下没有任何股票。",
     "loading": "正在加载结果…",
+    "col": {
+      "symbol": "代码",
+      "market": "市场",
+      "price": "价格",
+      "change": "涨跌",
+      "marketCap": "市值",
+      "volFavour1m": "1M 成交量偏好",
+      "ease1m": "1M 推动难易",
+      "crowded": "拥挤度"
+    },
     "filter": {
       "title": "筛选",
       "expand": "展开筛选",
