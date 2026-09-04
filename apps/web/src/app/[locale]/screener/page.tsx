@@ -206,6 +206,7 @@ export default async function ScreenerPage({ params, searchParams }: ScreenerPag
 
   const sectors = sectorsRes.data;
   const rows = rowsRes.data;
+  const rowsSource = rowsRes.source;
 
   // Forward everything except sort/dir to the table so its SortHeader links
   // preserve filter state when the user re-sorts.
@@ -225,6 +226,12 @@ export default async function ScreenerPage({ params, searchParams }: ScreenerPag
       <ScreenerTransitionProvider>
         <div className="space-y-4">
           <ScreenerFiltersPanel current={filters} sectors={sectors} />
+
+          {rowsSource === 'mock' && (
+            <div className="rounded-md bg-yellow-50 px-4 py-3 text-sm text-yellow-800 border border-yellow-200">
+              {t('demoBanner')}
+            </div>
+          )}
 
           <ScreenerTableShell>
             <ScreenerTable rows={rows} sort={sort} preservedSearch={preservedSearch} />

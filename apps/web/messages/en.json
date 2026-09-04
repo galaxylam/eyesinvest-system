@@ -141,6 +141,7 @@
     "subtitle": "Filter and sort the tracked universe by market, sector, market cap, valuation, yield, and momentum.",
     "count": "Showing {count, plural, =0 {no stocks} one {1 stock} other {{count} stocks}}",
     "empty": "No stocks match the current filters.",
+    "demoBanner": "Showing demo data — live feed unavailable.",
     "loading": "Loading results…",
     "filter": {
       "title": "Filters",
