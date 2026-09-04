@@ -87,13 +87,13 @@
       "source": "Source: Supabase (ey_sector_daily)",
       "empty": "No sector data yet. Run sync-sector-strength to populate.",
       "sectors": {
-        "financialServices":     "Financial Services",
+        "financialServices": "Financial Services",
         "communicationServices": "Communication Services",
-        "technology":            "Technology",
-        "consumerCyclical":      "Consumer Cyclical",
-        "energy":                "Energy",
-        "consumerDefensive":     "Consumer Defensive",
-        "healthcare":            "Healthcare"
+        "technology": "Technology",
+        "consumerCyclical": "Consumer Cyclical",
+        "energy": "Energy",
+        "consumerDefensive": "Consumer Defensive",
+        "healthcare": "Healthcare"
       }
     },
     "sectorDetail": {
@@ -109,13 +109,13 @@
       "col1mRsVsMarket": "1M RS vs market",
       "colBreadth": "Breadth",
       "sectors": {
-        "financialServices":     "Financial Services",
+        "financialServices": "Financial Services",
         "communicationServices": "Communication Services",
-        "technology":            "Technology",
-        "consumerCyclical":      "Consumer Cyclical",
-        "energy":                "Energy",
-        "consumerDefensive":     "Consumer Defensive",
-        "healthcare":            "Healthcare"
+        "technology": "Technology",
+        "consumerCyclical": "Consumer Cyclical",
+        "energy": "Energy",
+        "consumerDefensive": "Consumer Defensive",
+        "healthcare": "Healthcare"
       }
     }
   },
@@ -258,20 +258,6 @@
       "breakout": "Breakout",
       "breakoutUp": "Broke above support",
       "breakoutDown": "Broke below support"
-    },
-    "col": {
-      "symbol": "Symbol",
-      "market": "Market",
-      "price": "Price",
-      "change": "Change",
-      "volume": "Volume",
-      "marketCap": "Mkt cap",
-      "pe": "P/E",
-      "yield": "Yield",
-      "return1m": "1M",
-      "efficiency": "Eff",
-      "crowded": "Crowd",
-      "squeeze": "Squeeze"
     }
   },
   "stock": {
