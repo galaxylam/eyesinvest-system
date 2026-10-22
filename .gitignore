@@ -64,3 +64,8 @@ workers/yfinance/build/
 
 # OS
 Thumbs.db
+
+# Screener backtest — cached Supabase dumps (re-fetch with scripts/backtest/fetch_data.py).
+# Generated results in scripts/backtest/out/ are already covered by the `out/` rule above.
+scripts/backtest/data/
+scripts/backtest/__pycache__/
