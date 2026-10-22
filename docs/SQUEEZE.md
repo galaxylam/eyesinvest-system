@@ -51,6 +51,25 @@ Worker applies the following thresholds (deterministic) and the UI mirrors them:
 US rows are capped at 0.90 × 100 = 90 because the `am_ratio` weight is
 absorbed as zero. Acceptable trade-off — HK-only signal can't be replaced.
 
+**Calibrated screener bands.** The score distribution was measured over the
+full point-in-time history (2023-10 → 2026-01, all stock-days) and against the
+live snapshot:
+
+| Bound  | Share of US stock-days | Share of HK stock-days | Notes                                    |
+|--------|-------------------------|-------------------------|------------------------------------------|
+| `≥ 30` | ~47 %                   | ~71 %                   | Normal+ — broad momentum gate            |
+| `≥ 40` | ~15 %                   | ~46 %                   |                                          |
+| `≥ 50` | ~3 %                    | ~20 %                   | Elevated+                                |
+| `≥ 60` | ~0.4 %                  | ~3 %                    | top handful of names                     |
+| `≥ 70` | ~0 %                    | ~0.1 %                  | High — the observed maximum is **71.2**  |
+
+`≥ 80` was removed from the dropdown: the composite never reaches it (it would
+need DTC ≈ 10 days *and* SI Δ +30 % *and* a 30 % drawdown *and* a 5× volume
+spike simultaneously), so the option could never return a row. The backtest
+that drove these bands is in [`docs/BACKTEST_FILTER_COMBINATIONS.md`](BACKTEST_FILTER_COMBINATIONS.md)
+— the best US combination is `Squeeze ≥ 30 AND 1M Green Share > +10 %`
+(Sharpe 2.56 gross / 2.42 net vs a 2.00 benchmark).
+
 ## What the worker writes
 
 Migration `0013_short_squeeze.sql` adds these columns to `ey_stock_analytics`
@@ -78,12 +97,47 @@ as_of_date.
 4. Calls `compute_analytics(..., short_interest_rows=[...], latest_short_sale=(am_vol, vol))`
    which computes the 6 squeeze columns + the composite score and packs them
    into each `StockAnalyticsRow`.
-5. `upsert_analytics_rows` writes via PostgREST `.upsert()` — partial-row upsert
-   preserves other columns on the same `(stock_id, as_of_date)` PK.
+5. `upsert_analytics_rows` writes via PostgREST `.upsert()` — a partial-row
+   upsert only touches the columns present in the payload, so the writer's
+   own columns are replaced and everything else is left alone.
 
 `sync-squeeze` is added to the `sync_all` aggregator between `sync-shorts`
 and `sync-sector-strength`. Run order matters: prices + shorts must be
 fresh so the inputs are valid.
+
+## Write-order guarantee (column ownership)
+
+`ey_stock_analytics` has three writers, each of which computes only part of
+the row. A writer must therefore **never send a column it does not own** —
+PostgREST's upsert replaces every column present in the payload, so a null
+for a column another writer filled silently erases it.
+
+| Writer                 | Owns                                                     | Must not touch                   |
+|------------------------|----------------------------------------------------------|----------------------------------|
+| `sync-analytics`       | MA family, green/red share, impact-ease, drawdown, crowded | squeeze family, sector columns  |
+| `sync-squeeze`         | the 6 squeeze columns                                    | `relative_strength`, `volume_efficiency` |
+| `sync-sector-strength` | `relative_strength`, `volume_efficiency`, crowded ratio   | the squeeze family               |
+
+Enforced in code:
+
+- `upsert_analytics_rows(..., exclude_columns=(...))` drops the columns a
+  writer doesn't own from the payload entirely.
+- `upsert_analytics_rows(..., preserve_existing=True)` additionally asks
+  PostgREST for `default-to-null=false` (COALESCE on conflict), so a null
+  in the payload can no longer blank a stored value.
+- `SQUEEZE_COLUMNS` (`models.py`) is the canonical list; `sync-analytics`
+  and `sync-sector-strength` exclude it, `sync-squeeze` excludes the two
+  sector columns.
+- Regression test: `workers/yfinance/tests/test_analytics_upsert_ownership.py`.
+
+> **Why this matters.** Before the fix, `sync-sector-strength` ran last in
+> the pipeline with a payload computed *without* short inputs, so every row
+> inside its 252-day lookback window got a degraded squeeze score (drawdown +
+> volume spike only, max ≈ 33.6) and `NULL` DTC / SI-change. The screener's
+> Squeeze filter returned **zero rows** in both markets from 2026-02-12
+> onward. Fixing the writer is not enough on its own — the affected window
+> has to be re-synced, because the worker writes today's stock-level score
+> onto every row it touches.
 
 ## How the UI surfaces it
 
@@ -95,8 +149,9 @@ fresh so the inputs are valid.
   "Squeeze score is not available" panel.
 - **Screener** — `col.squeeze` column (right-aligned, color-toned by regime:
   `≥70 rose-500`, `≥50 amber-500`, else `fg`). `ScreenerFilters` adds a
-  dropdown bound to `?sq=` for `squeezeMin ∈ {40, 60, 80}` (matching the
-  regime bands). Sortable via `?sort=squeezeScore&dir=desc`.
+  dropdown bound to `?sq=` for `squeezeMin ∈ {30, 40, 50, 60, 70}` — the
+  measured bands (see "Regime bands" above); `≥80` was dropped because the
+  composite never reaches it. Sortable via `?sort=squeezeScore&dir=desc`.
 
 ## CLI usage
 

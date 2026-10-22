@@ -25,7 +25,7 @@ from eyesinvest_worker.db import (
     upsert_short_sales,
 )
 from eyesinvest_worker.log import configure_logging, logger
-from eyesinvest_worker.models import Fundamentals, IndexQuote
+from eyesinvest_worker.models import SECTOR_COLUMNS, SQUEEZE_COLUMNS, Fundamentals, IndexQuote
 from eyesinvest_worker.providers import (
     compute_analytics,
     compute_news,
@@ -191,7 +191,15 @@ def sync_analytics(market: str) -> None:
             continue
         result = compute_analytics(stock_id=s.id, bars=rows)
         if result and result.rows:
-            total += upsert_analytics_rows(client, result.rows)
+            # This command owns the MA / green-share / ease / drawdown /
+            # crowded-ratio columns. The squeeze family belongs to
+            # `sync-squeeze` and the sector columns to `sync-sector-strength`
+            # — leave both alone so a later failing step can't blank them.
+            total += upsert_analytics_rows(
+                client,
+                result.rows,
+                exclude_columns=SQUEEZE_COLUMNS + SECTOR_COLUMNS,
+            )
             logger.info(
                 f"[{i}/{len(stocks)}] {s.symbol}: {len(result.rows)} indicator rows"
             )
@@ -373,7 +381,22 @@ def sync_sector_strength() -> None:
     client = make_client(cfg.supabase_url, cfg.supabase_service_role_key)
 
     result = compute_sector_strength(client, cfg)
-    n_stock = upsert_analytics_rows(client, result.analytics_rows) if result.analytics_rows else 0
+    # This command computes no squeeze inputs, so its payload carries a
+    # *degraded* squeeze score (drawdown + volume spike only) and null
+    # DTC / SI-change. Writing it as-is used to overwrite the values
+    # `sync-squeeze` had just written for every row inside the 252-day
+    # lookback window. Drop the squeeze columns from the payload and keep
+    # the stored ones (docs/SQUEEZE.md, "Write-order guarantee").
+    n_stock = (
+        upsert_analytics_rows(
+            client,
+            result.analytics_rows,
+            preserve_existing=True,
+            exclude_columns=SQUEEZE_COLUMNS,
+        )
+        if result.analytics_rows
+        else 0
+    )
     n_sector = upsert_sector_daily(client, result.sector_rows) if result.sector_rows else 0
     logger.info(
         f"sync-sector-strength done — {n_stock} stock rows, {n_sector} sector rows"
@@ -470,7 +493,14 @@ def sync_squeeze(market: str) -> None:
             latest_short_sale=latest_sale,
         )
         if result and result.rows:
-            total += upsert_analytics_rows(client, result.rows)
+            # This command owns the squeeze family. `relative_strength` and
+            # `volume_efficiency` belong to `sync-sector-strength` — leave
+            # them alone.
+            total += upsert_analytics_rows(
+                client,
+                result.rows,
+                exclude_columns=SECTOR_COLUMNS,
+            )
             score = result.rows[-1].squeeze_score
             if score is not None:
                 scored += 1

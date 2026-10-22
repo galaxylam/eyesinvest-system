@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from typing import Any
 
 import httpx
@@ -200,16 +201,49 @@ def fetch_price_history(client: Client, stock_id: str) -> list[dict[str, Any]]:
     return list(resp.data or [])
 
 
-def upsert_analytics_rows(client: Client, rows: list[StockAnalyticsRow]) -> int:
-    """Upsert per-day indicator rows. PK conflict on (stock_id, as_of_date)."""
+def upsert_analytics_rows(
+    client: Client,
+    rows: list[StockAnalyticsRow],
+    *,
+    preserve_existing: bool = False,
+    exclude_columns: Sequence[str] = (),
+) -> int:
+    """Upsert per-day indicator rows. PK conflict on (stock_id, as_of_date).
+
+    Two knobs let a writer stay out of another writer's column family:
+
+    `exclude_columns` — drop these keys from the payload entirely. PostgREST
+    only touches the columns present in an upsert payload, so the stored
+    values survive untouched.
+
+    `preserve_existing=True` — switches PostgREST to ``default-to-null=false``
+    semantics: on conflict each column becomes ``COALESCE(excluded.col,
+    table.col)`` instead of ``excluded.col``, so a null in the payload no
+    longer blanks a stored value.
+
+    Both are needed for ``sync-sector-strength``: it computes no squeeze
+    inputs, so its payload carries a *degraded* squeeze score (drawdown +
+    volume spike only) and null DTC / SI-change. Writing it as-is used to
+    blank the squeeze columns that ``sync-squeeze`` had just written for
+    every row inside its 252-day lookback window (see docs/SQUEEZE.md).
+    """
     if not rows:
         return 0
-    payload = [_sanitize_for_json(r.model_dump(mode="json")) for r in rows]
+    payload = []
+    for r in rows:
+        d = _sanitize_for_json(r.model_dump(mode="json"))
+        for col in exclude_columns:
+            d.pop(col, None)
+        payload.append(d)
     written = 0
     for chunk in _chunks(payload, 500):
         resp = (
             client.table("ey_stock_analytics")
-            .upsert(chunk, on_conflict="stock_id,as_of_date")
+            .upsert(
+                chunk,
+                on_conflict="stock_id,as_of_date",
+                default_to_null=not preserve_existing,
+            )
             .execute()
         )
         written += len(resp.data or chunk)

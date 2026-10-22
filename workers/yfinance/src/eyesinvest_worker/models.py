@@ -131,6 +131,27 @@ class StockAnalyticsRow(BaseModel):
     source: str = "worker"
 
 
+#: The six squeeze columns. `sync-squeeze` owns them; every other analytics
+#: writer must leave them untouched (see docs/SQUEEZE.md, "Write-order
+#: guarantee") — a writer that computes no short inputs would otherwise
+#: overwrite them with a degraded score.
+SQUEEZE_COLUMNS: tuple[str, ...] = (
+    "squeeze_score",
+    "squeeze_dtc",
+    "squeeze_si_chg_1w",
+    "squeeze_drawdown_30d",
+    "squeeze_volume_spike",
+    "squeeze_am_ratio",
+)
+
+#: The sector columns. `sync-sector-strength` owns them; every other
+#: analytics writer must leave them untouched.
+SECTOR_COLUMNS: tuple[str, ...] = (
+    "relative_strength",
+    "volume_efficiency",
+)
+
+
 class SectorDailyRow(BaseModel):
     """One row of `ey_sector_daily` — sector-level rollup for an as-of date.
 
