@@ -122,7 +122,9 @@ def main() -> int:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     specs = [
-        ("ey_stocks", "id,symbol,name,market,sector,currency,is_active", "symbol"),
+        # shares_outstanding powers the volume-efficiency filter (it is a
+        # current snapshot, not point-in-time — same as the worker's own use).
+        ("ey_stocks", "id,symbol,name,market,sector,currency,is_active,shares_outstanding", "symbol"),
         ("ey_price_1d", "stock_id,trade_date,open,high,low,close,volume", "stock_id,trade_date"),
         ("ey_short_interest", "stock_id,settlement_date,market,short_interest,prior_short_interest,change_pct", "stock_id,settlement_date"),
         ("ey_short_sale_1d", "stock_id,trade_date,market,short_volume,am_short_volume,total_volume", "stock_id,trade_date"),

@@ -304,8 +304,56 @@ def write_report(payload: dict, out_path: Path) -> None:
     )
     parts.append("</ul></div>")
 
+    # --- selective strategies ---------------------------------------------
+    shortlists = payload.get("shortlist", {})
+    if shortlists:
+        parts.append("<h2>0 · Selective strategies — small basket, honest out-of-sample</h2>")
+        parts.append(
+            "<p class='sub'>The screener problem: a broad screen shows 30–50 names, which is no screen. "
+            "These candidates were ranked on the <b>train half only</b>, then read on two unseen halves "
+            "(validation, test). A ✅ means it also beat the equal-weight benchmark on <i>both</i> unseen "
+            "halves — with "
+            f"{payload.get('n_combos_per_market', 0):,} combinations tested per market, that is the only "
+            "filter that meaningfully rejects selection noise.</p>"
+        )
+        for m in markets:
+            sl = shortlists.get(m, [])
+            if not sl:
+                continue
+            bt = meta[m].get("benchmark_test", {}).get("sharpe")
+            bv = meta[m].get("benchmark_val", {}).get("sharpe")
+            survivors = [c for c in sl if c["beats_bench_val"] and c["beats_bench_test"]]
+            parts.append(f"<h3>{m} — {len(sl)} train-ranked candidates, {len(survivors)} survivors "
+                         f"(benchmark: val {fmt(bv)}, test {fmt(bt)})</h3>")
+            body = []
+            for c in sl[:20]:
+                ok = c["beats_bench_val"] and c["beats_bench_test"]
+                combo_cell = esc(c["combo"])
+                if ok:
+                    combo_cell = (f"<a href='{esc(c['combo_url'])}' target='_blank' rel='noopener'>"
+                                  f"{combo_cell}</a> ✅")
+                body.append([
+                    combo_cell,
+                    fmt(c["avg_picks"], 1),
+                    str(c["cur_picks"]),
+                    f"<span class='{cls(c['train_sharpe'])}'>{fmt(c['train_sharpe'])}</span>",
+                    f"<span class='{cls(c['val_sharpe'])}'>{fmt(c['val_sharpe'])}</span>",
+                    f"<span class='{cls(c['test_sharpe'])}'>{fmt(c['test_sharpe'])}</span>",
+                    pctf(c["win_rate"], 1) + "%",
+                    f"<span class='{cls(c['excess_win_rate'])}'>{pctf(c['excess_win_rate'], 1, sign=True)}pp</span>",
+                    fmt(c["profit_factor"], 2),
+                    f"<span class='{cls(c['max_dd'])}'>{pctf(c['max_dd'], 1)}%</span>",
+                ])
+            parts.append(_table(
+                [("Combination", False), ("Avg picks", True), ("Today", True),
+                 ("Train", True), ("Val", True), ("Test", True), ("Hit%", True),
+                 ("Hit vs mkt", True), ("Profit factor", True), ("MaxDD", True)],
+                body,
+            ))
+        parts.append("</div>")
+
     # --- single filter matrix --------------------------------------------
-    parts.append("<h2>1 · Single filters — the 7 × 3 matrix</h2>")
+    parts.append("<h2>1 · Single filters — the 9-filter matrix</h2>")
     parts.append(
         "<p class='sub'>Each filter alone, at each of its three values. "
         "Portfolio columns are the non-overlapping monthly backtest; "

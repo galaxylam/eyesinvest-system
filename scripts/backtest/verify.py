@@ -96,6 +96,14 @@ def main() -> int:
                 dd = (c / c.rolling(30, min_periods=1).max() - 1.0).rolling(30, min_periods=30).min().iloc[-1]
                 avg_vol30 = v.tail(30).mean()
 
+                # volume efficiency — |daily change %| ÷ turnover % (worker-identical)
+                shares = raw["stocks"].set_index("id").loc[sid].get("shares_outstanding")
+                eff = np.nan
+                if shares is not None and not pd.isna(shares) and float(shares) > 0:
+                    turnover_pct = v.iloc[-1] / float(shares) * 100.0
+                    if turnover_pct > 0:
+                        eff = abs((c.iloc[-1] - c.iloc[-2]) / c.iloc[-2]) * 100.0 / turnover_pct
+
                 si_rows = si[(si["stock_id"] == sid) & (si["settlement_date"] <= day)]
                 dtc = None
                 si_chg = None
@@ -124,6 +132,7 @@ def main() -> int:
                     ("ma5_slope", ma5.diff().iloc[-1], panel.fields["ma5_slope"][row, col]),
                     ("ma20_slope", ma20.diff().iloc[-1], panel.fields["ma20_slope"][row, col]),
                     ("squeeze", sq, panel.fields["squeeze"][row, col]),
+                    ("eff", eff, panel.fields["eff"][row, col]),
                 ]
                 for name, expected, actual in checks:
                     if expected is None or (isinstance(expected, float) and not np.isfinite(expected)):

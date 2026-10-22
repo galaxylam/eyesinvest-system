@@ -34,16 +34,17 @@ ENTRY_LAG = 1           # enter at the close of the next session after the signa
 
 
 # ---------------------------------------------------------------------------
-# Filter catalogue — 7 filters × 3 values, all values taken from the live
-# screener dropdowns (plus one documented extension, `flat`, for MA slopes).
+# Filter catalogue — every threshold is reachable from the live screener UI
+# (dropdown values were read from `ScreenerFilters.tsx`), so each backtested
+# combination can be pasted straight into a screener URL.
 # ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class FilterValue:
-    op: str          # ge | gt | le | lt | up | down | flat
+    op: str          # ge | gt | le | lt | up | down
     threshold: float | None
     label: str
-    ui_value: str
+    ui_value: str    # screener query-param fragment
 
 
 @dataclass(frozen=True)
@@ -51,24 +52,30 @@ class FilterSpec:
     key: str
     label: str
     values: tuple[FilterValue, ...]
+    # the screener query param this filter writes to
+    ui_param: str = ""
 
 
 FILTERS: tuple[FilterSpec, ...] = (
     FilterSpec(
         "return1m", "1M return",
         (
-            FilterValue("ge", 10.0, "≥ +10%", "return1mMin=10"),
-            FilterValue("ge", 0.0, "≥ 0%", "return1mMin=0"),
-            FilterValue("le", 0.0, "≤ 0%", "return1mMax=0"),
+            FilterValue("ge", 10.0, "≥ +10%", "ret1m=10"),
+            FilterValue("ge", 20.0, "≥ +20%", "ret1m=20"),
+            FilterValue("ge", 0.0, "≥ 0%", "ret1m=0"),
+            FilterValue("le", 0.0, "≤ 0%", "ret1mmax=0"),
         ),
+        "ret1m",
     ),
     FilterSpec(
         "crowded", "Crowded",
         (
-            FilterValue("ge", 1.5, "≥ 1.5×", "crowdedRatioMin=1.5"),
-            FilterValue("ge", 1.0, "≥ 1.0×", "crowdedRatioMin=1"),
-            FilterValue("lt", 0.8, "< 0.8×", "crowdedRatioMax=0.8"),
+            FilterValue("ge", 1.0, "≥ 1.0×", "crowd=1"),
+            FilterValue("ge", 1.2, "≥ 1.2×", "crowd=1.2"),
+            FilterValue("ge", 1.5, "≥ 1.5×", "crowd=1.5"),
+            FilterValue("ge", 2.0, "≥ 2.0×", "crowd=2"),
         ),
+        "crowd",
     ),
     FilterSpec(
         "squeeze", "Squeeze",
@@ -79,42 +86,67 @@ FILTERS: tuple[FilterSpec, ...] = (
             # nothing — too thin to backtest. The score here is recomputed
             # point-in-time from the raw short data, so it is unaffected by
             # the production pipeline's write-order bug.
-            FilterValue("ge", 30.0, "≥ 30 (Normal+)", "squeezeMin=30"),
-            FilterValue("ge", 40.0, "≥ 40", "squeezeMin=40"),
-            FilterValue("ge", 50.0, "≥ 50 (Elevated+)", "squeezeMin=50"),
+            FilterValue("ge", 30.0, "≥ 30 (Normal+)", "sq=30"),
+            FilterValue("ge", 40.0, "≥ 40", "sq=40"),
+            FilterValue("ge", 50.0, "≥ 50 (Elevated+)", "sq=50"),
         ),
+        "sq",
     ),
     FilterSpec(
         "ma5", "MA5",
         (
-            FilterValue("up", None, "rising", "ma5Trend=up"),
-            FilterValue("down", None, "falling", "ma5Trend=down"),
-            FilterValue("flat", None, "flat (|slope| < 0.1% of price)", "ma5Trend=flat*"),
+            FilterValue("up", None, "rising", "ma5=up"),
+            FilterValue("down", None, "falling", "ma5=down"),
         ),
+        "ma5",
     ),
     FilterSpec(
         "ma20", "MA20",
         (
-            FilterValue("up", None, "rising", "ma20Trend=up"),
-            FilterValue("down", None, "falling", "ma20Trend=down"),
-            FilterValue("flat", None, "flat (|slope| < 0.1% of price)", "ma20Trend=flat*"),
+            FilterValue("up", None, "rising", "ma20=up"),
+            FilterValue("down", None, "falling", "ma20=down"),
         ),
+        "ma20",
     ),
     FilterSpec(
         "greenshare", "1M Green Share",
         (
-            FilterValue("gt", 0.3, "> +30% green", "greenShareThreshold=0.3"),
-            FilterValue("gt", 0.1, "> +10% green", "greenShareThreshold=0.1"),
-            FilterValue("lt", -0.2, "< −20% red", "greenShareThreshold=-0.2"),
+            FilterValue("gt", 0.1, "> +10% green", "gs=0.1"),
+            FilterValue("gt", 0.2, "> +20% green", "gs=0.2"),
+            FilterValue("gt", 0.3, "> +30% green", "gs=0.3"),
+            FilterValue("gt", 0.5, "> +50% green", "gs=0.5"),
         ),
+        "gs",
     ),
     FilterSpec(
         "ease", "1M Push/Pull Ease",
         (
-            FilterValue("gt", 0.3, "≥ +30% easy to push up", "easeThreshold=0.3"),
-            FilterValue("gt", 0.1, "≥ +10% easy to push up", "easeThreshold=0.1"),
-            FilterValue("lt", -0.2, "≤ −20% easy to push down", "easeThreshold=-0.2"),
+            FilterValue("lt", -0.1, "≤ −10% easy to push down", "ease=-0.1"),
+            FilterValue("lt", -0.2, "≤ −20% easy to push down", "ease=-0.2"),
+            FilterValue("lt", -0.3, "≤ −30% easy to push down", "ease=-0.3"),
+            FilterValue("gt", 0.2, "≥ +20% easy to push up", "ease=0.2"),
         ),
+        "ease",
+    ),
+    # --- added for the selectivity pass (both already live in the UI) ------
+    FilterSpec(
+        "eff", "Volume Efficiency",
+        (
+            FilterValue("ge", 0.5, "≥ 0.5×", "eff=0.5"),
+            FilterValue("ge", 1.0, "≥ 1.0×", "eff=1"),
+            FilterValue("ge", 2.0, "≥ 2.0×", "eff=2"),
+        ),
+        "eff",
+    ),
+    FilterSpec(
+        "dd30", "30D Drawdown",
+        (
+            FilterValue("le", -0.1, "≤ −10%", "dd30=-10"),
+            FilterValue("le", -0.2, "≤ −20%", "dd30=-20"),
+            FilterValue("le", -0.3, "≤ −30%", "dd30=-30"),
+            FilterValue("le", -0.4, "≤ −40%", "dd30=-40"),
+        ),
+        "dd30",
     ),
 )
 
@@ -179,6 +211,23 @@ def _max_drawdown(close: pd.Series, window: int = 30) -> pd.Series:
     rolling_max = close.rolling(window, min_periods=1).max()
     drawdown = close / rolling_max - 1.0
     return drawdown.rolling(window, min_periods=window).min()
+
+
+def _volume_efficiency(
+    close: pd.Series, volume: pd.Series, shares_outstanding: int | None
+) -> pd.Series:
+    """|daily change %| ÷ turnover % — worker-identical (analytics.py).
+
+    Higher = more price impact per unit of turnover = thinner / harder to
+    trade, so the screener's `Volume Efficiency ≥ X` filter selects the
+    illiquid end of the range.
+    """
+    if shares_outstanding is None or shares_outstanding <= 0:
+        return pd.Series(np.nan, index=close.index, dtype="float64")
+    turnover_pct = volume / float(shares_outstanding) * 100.0
+    prev = close.shift(1)
+    daily_change_pct = (close - prev) / prev * 100.0
+    return (daily_change_pct.abs() / turnover_pct.replace(0, np.nan))
 
 
 def _clip01(x: float | None, lo: float, hi: float) -> float:
@@ -253,6 +302,11 @@ def build_market_panel(raw: dict[str, pd.DataFrame], market: str) -> MarketPanel
     stocks = stocks[(stocks["market"] == market) & (stocks["is_active"])]
     prices = raw["prices"].merge(stocks[["id", "symbol"]], left_on="stock_id", right_on="id")
     prices = prices.sort_values(["stock_id", "trade_date"])
+    shares_by_id = (
+        dict(zip(stocks["id"], stocks["shares_outstanding"]))
+        if "shares_outstanding" in stocks.columns
+        else {}
+    )
 
     all_dates = sorted(prices["trade_date"].unique())
     date_index = {d: i for i, d in enumerate(all_dates)}
@@ -263,6 +317,7 @@ def build_market_panel(raw: dict[str, pd.DataFrame], market: str) -> MarketPanel
     field_names = (
         "close", "ret1m", "crowded", "squeeze", "ma5_slope", "ma20_slope",
         "share", "ease", "fwd21", "fwd63", "fwd21_nextclose", "drawdown30d",
+        "eff",
     )
     fields: dict[str, np.ndarray] = {
         k: np.full((n_dates, n_stocks), np.nan) for k in field_names
@@ -290,6 +345,10 @@ def build_market_panel(raw: dict[str, pd.DataFrame], market: str) -> MarketPanel
         share = _green_red_share(open_, close, volume)
         ease = _green_red_ease(open_, close, volume)
         dd30 = _max_drawdown(close, 30)
+        shares = shares_by_id.get(stock_id)
+        eff = _volume_efficiency(
+            close, volume, int(shares) if shares is not None and not pd.isna(shares) else None
+        )
 
         avg_vol30 = volume.rolling(30, min_periods=30).mean()
         si_rows = si_by_stock.get(stock_id)
@@ -332,6 +391,7 @@ def build_market_panel(raw: dict[str, pd.DataFrame], market: str) -> MarketPanel
             ("share", share),
             ("ease", ease),
             ("drawdown30d", dd30),
+            ("eff", eff),
             ("fwd21", fwd21),
             ("fwd63", fwd63),
             ("fwd21_nextclose", fwd21_nextclose),
@@ -381,16 +441,24 @@ def build_masks(panel: MarketPanel) -> dict[tuple[str, int], np.ndarray]:
                 base = f["ma5_slope"] if spec.key == "ma5" else f["ma20_slope"]
                 if val.op == "up":
                     m = np.isfinite(base) & (base > 0)
-                elif val.op == "down":
+                else:  # down
                     m = np.isfinite(base) & (base < 0)
-                else:  # flat — extension: |slope| < 0.1% of price
-                    m = np.isfinite(base) & (np.abs(base) <= 0.001 * f["close"])
             elif spec.key == "greenshare":
                 base = f["share"]
                 m = np.isfinite(base) & ((base > val.threshold) if val.op == "gt" else (base < val.threshold))
             elif spec.key == "ease":
                 base = f["ease"]
                 m = np.isfinite(base) & ((base > val.threshold) if val.op == "gt" else (base < val.threshold))
+            elif spec.key == "eff":
+                # `Volume Efficiency ≥ X` selects the illiquid end: the metric
+                # is |daily change %| ÷ turnover %, so higher = thicker impact.
+                base = f["eff"]
+                m = np.isfinite(base) & (base >= val.threshold)
+            elif spec.key == "dd30":
+                # Drawdown is stored as a negative fraction; the UI encodes it
+                # as a percent integer (dd30=-30 → -0.30 internally).
+                base = f["drawdown30d"]
+                m = np.isfinite(base) & (base <= val.threshold)
             else:  # pragma: no cover
                 raise ValueError(f"unknown filter {spec.key}")
             masks[(spec.key, vi)] = m
@@ -520,6 +588,23 @@ def evaluate_combo(
     port = port_full
     pm = portfolio_metrics(port)
     avg_picks = float(np.mean(counts_list)) if counts_list else float("nan")
+    max_picks = int(max(counts_list)) if counts_list else 0
+    invested = sum(1 for c in counts_list if c > 0)
+    pct_periods_invested = invested / len(counts_list) if counts_list else float("nan")
+
+    # --- live-screen size -------------------------------------------------
+    # How many names the *current* screener shows for this combination: the
+    # filter mask on the panel's last session (no forward return needed).
+    cur_picks = int(mask[-1].sum())
+
+    # Profit factor on the monthly portfolio series: gross gain ÷ gross loss.
+    r = port[np.isfinite(port)]
+    if r.size:
+        gains = float(r[r > 0].sum())
+        losses = float(-r[r < 0].sum())
+        profit_factor = gains / losses if losses > 0 else float("nan")
+    else:
+        profit_factor = float("nan")
 
     return {
         "n_picks": n_picks,
@@ -530,6 +615,10 @@ def evaluate_combo(
         "n_signal_dates": n_signal_dates,
         **pm,
         "avg_picks": avg_picks,
+        "max_picks": max_picks,
+        "pct_periods_invested": pct_periods_invested,
+        "cur_picks": cur_picks,
+        "profit_factor": profit_factor,
         "_port": port,
         "_sel": sel,
     }
@@ -558,3 +647,18 @@ def combo_ui(combo: tuple[tuple[str, int], ...]) -> str:
     return " & ".join(
         f"{FILTER_BY_KEY[k].key}={FILTER_BY_KEY[k].values[vi].ui_value}" for k, vi in combo
     )
+
+
+SCREENER_BASE = "https://eyesinvest-system-web.vercel.app"
+
+
+def combo_url(combo: tuple[tuple[str, int], ...], market: str) -> str:
+    """A paste-ready screener URL for this combination.
+
+    The param names match `apps/web/src/app/[locale]/screener/page.tsx`
+    (`parseFilters`) one-for-one, so the link and the dropdowns agree.
+    """
+    params = [f"market={market}"]
+    for key, vi in combo:
+        params.append(FILTER_BY_KEY[key].values[vi].ui_value)
+    return f"{SCREENER_BASE}/en/screener?" + "&".join(params)
