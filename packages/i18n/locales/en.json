@@ -80,13 +80,13 @@
       "source": "Source: Supabase (ey_sector_daily)",
       "empty": "No sector data yet. Run sync-sector-strength to populate.",
       "sectors": {
-        "financialServices":     "Financial Services",
+        "financialServices": "Financial Services",
         "communicationServices": "Communication Services",
-        "technology":            "Technology",
-        "consumerCyclical":      "Consumer Cyclical",
-        "energy":                "Energy",
-        "consumerDefensive":     "Consumer Defensive",
-        "healthcare":            "Healthcare"
+        "technology": "Technology",
+        "consumerCyclical": "Consumer Cyclical",
+        "energy": "Energy",
+        "consumerDefensive": "Consumer Defensive",
+        "healthcare": "Healthcare"
       }
     },
     "sectorDetail": {
@@ -102,13 +102,13 @@
       "col1mRsVsMarket": "1M RS vs market",
       "colBreadth": "Breadth",
       "sectors": {
-        "financialServices":     "Financial Services",
+        "financialServices": "Financial Services",
         "communicationServices": "Communication Services",
-        "technology":            "Technology",
-        "consumerCyclical":      "Consumer Cyclical",
-        "energy":                "Energy",
-        "consumerDefensive":     "Consumer Defensive",
-        "healthcare":            "Healthcare"
+        "technology": "Technology",
+        "consumerCyclical": "Consumer Cyclical",
+        "energy": "Energy",
+        "consumerDefensive": "Consumer Defensive",
+        "healthcare": "Healthcare"
       }
     }
   },
@@ -188,9 +188,11 @@
       "siDec2": "Decreasing 2 periods",
       "siDec3": "Decreasing 3 periods",
       "squeezeScore": "Squeeze",
-      "sq40": "≥ 40 (Normal+)",
-      "sq60": "≥ 60 (Elevated+)",
-      "sq80": "≥ 80 (High only)"
+      "sq30": "≥ 30 (Normal+)",
+      "sq40": "≥ 40",
+      "sq50": "≥ 50 (Elevated+)",
+      "sq60": "≥ 60",
+      "sq70": "≥ 70 (High)"
     },
     "col": {
       "symbol": "Symbol",

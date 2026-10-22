@@ -80,13 +80,13 @@
       "source": "来源：Supabase (ey_sector_daily)",
       "empty": "尚无行业数据。请执行 sync-sector-strength 同步数据。",
       "sectors": {
-        "financialServices":     "金融服务",
+        "financialServices": "金融服务",
         "communicationServices": "通信服务",
-        "technology":            "科技",
-        "consumerCyclical":      "非必需消费",
-        "energy":                "能源",
-        "consumerDefensive":     "必需消费",
-        "healthcare":            "医疗保健"
+        "technology": "科技",
+        "consumerCyclical": "非必需消费",
+        "energy": "能源",
+        "consumerDefensive": "必需消费",
+        "healthcare": "医疗保健"
       }
     },
     "sectorDetail": {
@@ -102,13 +102,13 @@
       "col1mRsVsMarket": "1 个月相对大盘",
       "colBreadth": "宽度",
       "sectors": {
-        "financialServices":     "金融服务",
+        "financialServices": "金融服务",
         "communicationServices": "通信服务",
-        "technology":            "科技",
-        "consumerCyclical":      "非必需消费",
-        "energy":                "能源",
-        "consumerDefensive":     "必需消费",
-        "healthcare":            "医疗保健"
+        "technology": "科技",
+        "consumerCyclical": "非必需消费",
+        "energy": "能源",
+        "consumerDefensive": "必需消费",
+        "healthcare": "医疗保健"
       }
     }
   },
@@ -188,9 +188,11 @@
       "siDec2": "2 期减少",
       "siDec3": "3 期减少",
       "squeezeScore": "轧空分数",
-      "sq40": "≥ 40（含普通）",
-      "sq60": "≥ 60（含偏高）",
-      "sq80": "仅 ≥ 80（高）"
+      "sq30": "≥ 30（含普通）",
+      "sq40": "≥ 40",
+      "sq50": "≥ 50（含偏高）",
+      "sq60": "≥ 60",
+      "sq70": "≥ 70（高）"
     },
     "col": {
       "symbol": "代号",

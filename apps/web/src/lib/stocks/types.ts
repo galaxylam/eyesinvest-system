@@ -434,7 +434,13 @@ export interface ScreenerFilters {
   easeThreshold?: EaseThreshold;
   /** Short-interest settlement trend over the last N consecutive periods. */
   shortInterestTrend?: ShortInterestTrendFilter;
-  /** Lower bound on the 0..100 short-squeeze score (e.g. 60 = ≥Elevated).
+  /** Lower bound on the 0..100 short-squeeze score.
+   *  Bands (calibrated against the live distribution, see docs/SQUEEZE.md):
+   *    30 → ~47% of US stock-days / ~71% of HK  (Normal+)
+   *    40 → ~15% / ~46%
+   *    50 → ~3%  / ~20%   (Elevated+)
+   *    60 → ~0.4% / ~3%
+   *    70 → top tier (High) — the observed maximum is ~71
    *  Rows with `squeezeScore == null` are excluded — there's no synthetic
    *  zero to filter against. */
   squeezeMin?: number;

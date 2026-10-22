@@ -418,9 +418,11 @@ export function ScreenerFilters({ current, sectors }: ScreenerFiltersProps) {
         disabled={pending}
         options={[
           { value: '', label: t('filter.any') },
+          { value: '30', label: t('filter.sq30') },
           { value: '40', label: t('filter.sq40') },
+          { value: '50', label: t('filter.sq50') },
           { value: '60', label: t('filter.sq60') },
-          { value: '80', label: t('filter.sq80') },
+          { value: '70', label: t('filter.sq70') },
         ]}
       />
       <SelectField
