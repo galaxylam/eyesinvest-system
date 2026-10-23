@@ -134,6 +134,8 @@
     "subtitle": "依市場、行業、市值、估值、股息率與動能篩選並排序追蹤名單。",
     "count": "顯示 {count, plural, =0 {無股票} one {1 個} other {{count} 個}}股票",
     "empty": "目前篩選條件下沒有任何股票。",
+    "demoBanner": "顯示示範數據 — 即時數據暫時無法連接。",
+    "degradedBanner": "即時數據暫時無法連接 — 正在重試…",
     "filter": {
       "market": "市場",
       "sector": "行業",

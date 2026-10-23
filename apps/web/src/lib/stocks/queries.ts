@@ -92,6 +92,75 @@ export type {
 interface QueryResult<T> {
   data: T;
   source: 'supabase' | 'mock';
+  /**
+   * Why the mock fallback was used, when it was. `null` means the live
+   * query succeeded. Distinguishes "no Supabase configured" (a demo build)
+   * from "the live query failed" (a degraded build that should retry).
+   */
+  error?: string | null;
+}
+
+/**
+ * Retry policy for the live query.
+ *
+ * The hosted Supabase project enforces a Postgres `statement_timeout`, and
+ * the screener's analytics query was heavy enough to cross it under load —
+ * the failure surfaced as "Showing demo data" on a page whose live data was
+ * perfectly reachable a second later.
+ *
+ * The retry budget is deliberately small: a serverless render that hangs for
+ * 20+ seconds is worse than a fast degraded response, because the browser
+ * gives up before the retry lands. So the server makes ONE quick retry
+ * (for a connection reset / edge hiccup) and skips the retry entirely for
+ * a statement timeout — the database is saturated at that point, and an
+ * immediate second attempt just burns the render budget. The longer retry
+ * loop lives in the client (`ScreenerAutoRetry`), where it costs the server
+ * nothing.
+ */
+const MAX_QUERY_ATTEMPTS = 2;
+const RETRY_BACKOFF_MS = 250;
+
+/**
+ * Hard cap on the screener's live read. The serverless function must answer
+ * inside its execution budget — a hung render is worse than a degraded one,
+ * because the browser gives up before any retry could land. The client-side
+ * `ScreenerAutoRetry` re-runs the whole render when this trips.
+ */
+const SCREENER_QUERY_TIMEOUT_MS = 8_000;
+
+/** Postgres error code for "canceling statement due to statement timeout". */
+const PG_STATEMENT_TIMEOUT = '57014';
+
+/** True for a Postgres statement timeout — retrying will not help. */
+function isStatementTimeout(err: unknown): boolean {
+  const e = err as { code?: string; message?: string } | null;
+  if (!e) return false;
+  if (e.code === PG_STATEMENT_TIMEOUT) return true;
+  return typeof e.message === 'string' && e.message.includes('statement timeout');
+}
+
+/**
+ * True when the host itself could not be reached (DNS failure, connection
+ * refused). A retry inside the same render cannot fix that — it would just
+ * double the time the user waits — so the client takes over instead.
+ */
+function isUnreachableHost(err: unknown): boolean {
+  const e = err as { message?: string; details?: string } | null;
+  if (!e) return false;
+  const text = `${e.message ?? ''} ${e.details ?? ''}`;
+  return /ENOTFOUND|ECONNREFUSED|EAI_AGAIN|getaddrinfo|fetch failed/i.test(text);
+}
+
+/**
+ * True when the query was cut short by our own abort signal (the screener's
+ * render budget). Retrying would just spend the budget twice over, so the
+ * client takes over the retry loop instead.
+ */
+function isAbortError(err: unknown): boolean {
+  const e = err as { code?: string; message?: string } | null;
+  if (!e) return false;
+  if (e.code === '20') return true;
+  return typeof e.message === 'string' && /abort/i.test(e.message);
 }
 
 /**
@@ -99,13 +168,13 @@ interface QueryResult<T> {
  * the bundled mock data set. Keeps the rest of the app unaware of the
  * data source.
  *
- * On the Supabase path, a single retry is attempted before falling back
- * to mock. The Python sync worker hit the same intermittent class of
- * failures (HTTP/2 stream resets at Supabase's edge, brief gateway
- * hiccups — see commits 1613ef0 / 555faa9) and recovered with a retry;
- * the web side used to silently demote to mock on the first blip, which
- * manifested to /screener users as "no results, refresh, results are
- * back" — the mock universe is tiny so narrow filter combinations
+ * On the Supabase path, the query is retried once before falling back to
+ * mock. The Python sync worker hit the same intermittent class of failures
+ * (HTTP/2 stream resets at Supabase's edge, brief gateway hiccups — see
+ * commits 1613ef0 / 555faa9) and recovered with a retry; the web side used
+ * to silently demote to mock on the first blip, which manifested to
+ * /screener users as "no results, refresh, results are back" — the mock
+ * universe is tiny so narrow filter combinations
  * (`gs=0.4&ease=0.1&crowdlt=1&ret6mmax=0&ma20=down` etc.) often return
  * zero rows against it.
  */
@@ -115,24 +184,33 @@ async function withFallback<T>(
 ): Promise<QueryResult<T>> {
   const client = await createServerClient();
   if (!client) {
-    return { data: fallback(), source: 'mock' };
+    return { data: fallback(), source: 'mock', error: null };
   }
   let lastErr: unknown;
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  for (let attempt = 1; attempt <= MAX_QUERY_ATTEMPTS; attempt++) {
     try {
       const data = await fn(client);
-      return { data, source: 'supabase' };
+      return { data, source: 'supabase', error: null };
     } catch (err) {
       lastErr = err;
-      if (attempt === 2) break;
+      if (attempt === MAX_QUERY_ATTEMPTS) break;
+      if (isStatementTimeout(err) || isAbortError(err) || isUnreachableHost(err)) {
+        // The database is saturated (or we ran out of render budget) — a
+        // second attempt would hit the same wall and double the wait. The
+        // client-side retry re-runs the whole render instead.
+        console.warn('[queries] Supabase query timed out, not retrying:', err);
+        break;
+      }
       console.warn(`[queries] Supabase attempt ${attempt} failed, retrying:`, err);
-      // Short backoff — long enough to ride out a single HTTP/2 stream
-      // reset, short enough to stay well under the RSC render budget.
-      await new Promise((resolve) => setTimeout(resolve, 250));
+      await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS));
     }
   }
-  console.error('[queries] Supabase failed after retry, using mock fallback:', lastErr);
-  return { data: fallback(), source: 'mock' };
+  console.error('[queries] Supabase failed, using mock fallback:', lastErr);
+  return {
+    data: fallback(),
+    source: 'mock',
+    error: lastErr instanceof Error ? lastErr.message : String(lastErr),
+  };
 }
 
 export async function getStockDetail(symbol: string): Promise<QueryResult<StockDetail | null>> {
@@ -1146,14 +1224,21 @@ export async function getScreenerRows(
   const sort: ScreenerSort = opts.sort ?? { column: 'marketCap', dir: 'desc' };
   return withFallback(
     async (supabase) => {
-      // Fundamentals live on `ey_stocks` (see migration 0003) — no separate
+      // Hard cap on the whole read. A serverless render that hangs is worse
+      // than a fast degraded response — the browser gives up before the
+      // retry lands — so every query below shares one abort signal.
+      const controller = new AbortController();
+      const abortTimer = setTimeout(() => controller.abort(), SCREENER_QUERY_TIMEOUT_MS);
+      try {
+        // Fundamentals live on `ey_stocks` (see migration 0003) — no separate
       // `ey_stock_fundamentals` table. Including them in the initial SELECT
       // saves a round-trip and avoids a silent fallback to mock data.
       const { data: stocks, error: stocksErr } = await supabase
         .from('ey_stocks')
         .select('id, symbol, name, market, currency, sector, market_cap, pe_ratio, dividend_yield')
         .eq('is_active', true)
-        .order('symbol', { ascending: true });
+        .order('symbol', { ascending: true })
+        .abortSignal(controller.signal);
       if (stocksErr) throw stocksErr;
       const stockRows = (stocks ?? []) as Array<{
         id: string;
@@ -1182,66 +1267,102 @@ export async function getScreenerRows(
         idChunks.push(ids.slice(i, i + CHUNK_SIZE));
       }
 
+      // `ey_stock_analytics` holds one row per (stock, session) — 400k+ rows.
+      // Ordering it by as_of_date with no window made Postgres sort every
+      // historical row of the chunk (~60k rows, 2.2MB of JSON per chunk)
+      // just to keep the newest one, and under load that query crossed
+      // Supabase's `statement_timeout` (57014) — which demoted the whole
+      // screener to mock data even though the live feed was reachable.
+      //
+      // The screener only ever uses the *latest* row per stock, so fetch a
+      // short recent window instead. The newest date is one indexed row
+      // (`as_of_date desc` limit 1), and the window is wide enough to
+      // still contain the latest row of any stock that is merely a few
+      // sessions behind the market.
+      const ANALYTICS_WINDOW_DAYS = 14;
+      const { data: latestRows } = await supabase
+        .from('ey_stock_analytics')
+        .select('as_of_date')
+        .order('as_of_date', { ascending: false })
+        .limit(1)
+        .abortSignal(controller.signal);
+      const latestDate = latestRows?.[0]?.as_of_date ?? null;
+      const analyticsWindowStart = latestDate
+        ? new Date(new Date(`${latestDate}T00:00:00Z`).getTime() - ANALYTICS_WINDOW_DAYS * 86_400_000)
+            .toISOString()
+            .slice(0, 10)
+        : null;
+
+      let quotesRes: { data: unknown[]; error: unknown };
+      let analyticsRes: { data: unknown[]; error: unknown };
+      let interestRes: { data: unknown[]; error: unknown };
+      let pricesRes: { data: unknown[]; error: unknown };
       const [quotesArr, analyticsArr, interestArr, pricesArr] = await Promise.all([
         Promise.all(
           idChunks.map((chunk) =>
             supabase.from('ey_quote_snapshot').select(
               'stock_id, last_price, change, change_percent, volume',
-            ).in('stock_id', chunk),
+            ).in('stock_id', chunk).abortSignal(controller.signal),
           ),
         ),
-        // One row per (stock, as_of_date); take the latest by as_of_date desc.
-        // Phase 3+: `volume_efficiency` + `crowded_ratio` are persisted here by
-        // `sync-sector-strength` — replaces the previous per-stock
-        // `ey_price_1d` 30-day pull + `deriveEfficiencyAndCrowded` round trip.
-        // Phase 3+ screener filters: ma5_slope / ma20_slope /
-        // green_red_volume_ratio_1m drive the "MA upward / 1M green vs red"
-        // dropdowns (see 0011_screener_filters.sql).
-        Promise.all(
-          idChunks.map((chunk) =>
-            supabase.from('ey_stock_analytics').select(
-              'stock_id, as_of_date, return_1m, return_3m, return_6m, return_1y, ' +
-                'volume_efficiency, crowded_ratio, max_drawdown_30d, max_drawdown_60d, ma5_slope, ma20_slope, ' +
-                'green_red_volume_ratio_1m, green_red_volume_share_1m, green_red_impact_ease_1m, squeeze_score',
-            ).in('stock_id', chunk).order('as_of_date', { ascending: false }),
-          ),
+      // One row per (stock, as_of_date); take the latest by as_of_date desc.
+      // Phase 3+: `volume_efficiency` + `crowded_ratio` are persisted here by
+      // `sync-sector-strength` — replaces the previous per-stock
+      // `ey_price_1d` 30-day pull + `deriveEfficiencyAndCrowded` round trip.
+      // Phase 3+ screener filters: ma5_slope / ma20_slope /
+      // green_red_volume_ratio_1m drive the "MA upward / 1M green vs red"
+      // dropdowns (see 0011_screener_filters.sql).
+      //
+      // The `as_of_date` window keeps Postgres on the date index instead of
+      // sorting the table's whole history for the chunk — see the comment
+      // on ANALYTICS_WINDOW_DAYS above.
+      Promise.all(
+        idChunks.map((chunk) => {
+          let q = supabase.from('ey_stock_analytics').select(
+            'stock_id, as_of_date, return_1m, return_3m, return_6m, return_1y, ' +
+              'volume_efficiency, crowded_ratio, max_drawdown_30d, max_drawdown_60d, ma5_slope, ma20_slope, ' +
+              'green_red_volume_ratio_1m, green_red_volume_share_1m, green_red_impact_ease_1m, squeeze_score',
+          ).in('stock_id', chunk);
+          if (analyticsWindowStart) q = q.gte('as_of_date', analyticsWindowStart);
+          return q.order('as_of_date', { ascending: false }).abortSignal(controller.signal);
+        }),
+      ),
+      // Last 5 bi-weekly settlements per stock — enough for the
+      // "increasing / decreasing for 1/2/3 periods" short-interest filter.
+      // One row per (stock_id, settlement_date); 30 stocks × 5 ≈ 150 rows.
+      // We ask each chunk for `chunk.length * 5` rows so the per-stock
+      // cap is unchanged regardless of chunking.
+      Promise.all(
+        idChunks.map((chunk) =>
+          supabase.from('ey_short_interest').select(
+            'stock_id, settlement_date, short_interest',
+          ).in('stock_id', chunk).order('settlement_date', { ascending: false })
+            .limit(chunk.length * 5).abortSignal(controller.signal),
         ),
-        // Last 5 bi-weekly settlements per stock — enough for the
-        // "increasing / decreasing for 1/2/3 periods" short-interest filter.
-        // One row per (stock_id, settlement_date); 30 stocks × 5 ≈ 150 rows.
-        // We ask each chunk for `chunk.length * 5` rows so the per-stock
-        // cap is unchanged regardless of chunking.
-        Promise.all(
-          idChunks.map((chunk) =>
-            supabase.from('ey_short_interest').select(
-              'stock_id, settlement_date, short_interest',
-            ).in('stock_id', chunk).order('settlement_date', { ascending: false })
-              .limit(chunk.length * 5),
-          ),
+      ),
+      // Last 20 trading days of OHLC per stock — drives the
+      // breakout / breakdown filter. ~30 stocks × 20 ≈ 600 rows total,
+      // so chunking isn't strictly required, but it keeps every other
+      // read in this parallel block consistent.
+      // We pull chunk.length * 20 rows so each stock's cap is preserved
+      // regardless of chunking.
+      Promise.all(
+        idChunks.map((chunk) =>
+          supabase.from('ey_price_1d').select(
+            'stock_id, trade_date, close, volume',
+          ).in('stock_id', chunk).order('trade_date', { ascending: false })
+            .limit(chunk.length * 20).abortSignal(controller.signal),
         ),
-        // Last 20 trading days of OHLC per stock — drives the
-        // breakout / breakdown filter. ~30 stocks × 20 ≈ 600 rows total,
-        // so chunking isn't strictly required, but it keeps every other
-        // read in this parallel block consistent.
-        // We pull chunk.length * 20 rows so each stock's cap is preserved
-        // regardless of chunking.
-        Promise.all(
-          idChunks.map((chunk) =>
-            supabase.from('ey_price_1d').select(
-              'stock_id, trade_date, close, volume',
-            ).in('stock_id', chunk).order('trade_date', { ascending: false })
-              .limit(chunk.length * 20),
-          ),
-        ),
+      ),
       ]);
-      const quotesRes = { data: quotesArr.flatMap((r) => r.data ?? []), error: mergeErrors(quotesArr.map((r) => r.error)) };
-      const analyticsRes = { data: analyticsArr.flatMap((r) => r.data ?? []), error: mergeErrors(analyticsArr.map((r) => r.error)) };
-      const interestRes = { data: interestArr.flatMap((r) => r.data ?? []), error: mergeErrors(interestArr.map((r) => r.error)) };
-      const pricesRes = { data: pricesArr.flatMap((r) => r.data ?? []), error: mergeErrors(pricesArr.map((r) => r.error)) };
-      if (quotesRes.error) throw quotesRes.error;
-      if (analyticsRes.error) throw analyticsRes.error;
-      if (interestRes.error) throw interestRes.error;
-      if (pricesRes.error) throw pricesRes.error;
+        quotesRes = { data: quotesArr.flatMap((r) => r.data ?? []), error: mergeErrors(quotesArr.map((r) => r.error)) };
+        analyticsRes = { data: analyticsArr.flatMap((r) => r.data ?? []), error: mergeErrors(analyticsArr.map((r) => r.error)) };
+        interestRes = { data: interestArr.flatMap((r) => r.data ?? []), error: mergeErrors(interestArr.map((r) => r.error)) };
+        pricesRes = { data: pricesArr.flatMap((r) => r.data ?? []), error: mergeErrors(pricesArr.map((r) => r.error)) };
+        if (quotesRes.error) throw quotesRes.error;
+        if (analyticsRes.error) throw analyticsRes.error;
+        if (interestRes.error) throw interestRes.error;
+        if (pricesRes.error) throw pricesRes.error;
 
       const quoteMap = new Map<string, { last_price: number | null; change: number | null; change_percent: number | null; volume: number | null }>();
       for (const q of (quotesRes.data ?? []) as Array<{ stock_id: string; last_price: number | null; change: number | null; change_percent: number | null; volume: number | null }>) {
@@ -1354,6 +1475,9 @@ export async function getScreenerRows(
         applyScreenerFilters(rows, filters, interestBySymbol, breakoutBySymbol),
         sort,
       ).slice(0, SCREENER_LIMIT);
+      } finally {
+        clearTimeout(abortTimer);
+      }
     },
     () => {
       const mockRows = getMockScreenerRows();

@@ -142,6 +142,8 @@
     "count": "显示 {count, plural, =0 {无股票} one {1 个} other {{count} 个}}股票",
     "empty": "目前筛选条件下没有任何股票。",
     "loading": "正在加载结果…",
+    "demoBanner": "显示演示数据 — 实时数据暂时无法连接。",
+    "degradedBanner": "实时数据暂时无法连接 — 正在重试…",
     "col": {
       "symbol": "代号",
       "market": "市场",

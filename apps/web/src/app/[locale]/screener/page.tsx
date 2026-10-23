@@ -11,6 +11,7 @@ import { ScreenerFilters as ScreenerFiltersPanel } from '@/components/screener/S
 import { ScreenerTable } from '@/components/screener/ScreenerTable';
 import { ScreenerTableShell } from '@/components/screener/ScreenerTableShell';
 import { ScreenerTransitionProvider } from '@/components/screener/ScreenerTransitionContext';
+import { ScreenerAutoRetry } from '@/components/screener/ScreenerAutoRetry';
 
 interface ScreenerPageProps {
   params: Promise<{ locale: string }>;
@@ -229,9 +230,11 @@ export default async function ScreenerPage({ params, searchParams }: ScreenerPag
 
           {rowsSource === 'mock' && (
             <div className="rounded-md bg-yellow-50 px-4 py-3 text-sm text-yellow-800 border border-yellow-200">
-              {t('demoBanner')}
+              {rowsRes.error ? t('degradedBanner') : t('demoBanner')}
             </div>
           )}
+
+          <ScreenerAutoRetry degraded={rowsSource === 'mock' && !!rowsRes.error} />
 
           <ScreenerTableShell>
             <ScreenerTable rows={rows} sort={sort} preservedSearch={preservedSearch} />

@@ -142,6 +142,8 @@
     "count": "顯示 {count, plural, =0 {無股票} one {1 個} other {{count} 個}}股票",
     "empty": "目前篩選條件下沒有任何股票。",
     "loading": "正在載入結果…",
+    "demoBanner": "顯示示範數據 — 即時數據暫時無法連接。",
+    "degradedBanner": "即時數據暫時無法連接 — 正在重試…",
     "col": {
       "symbol": "代號",
       "market": "市場",
