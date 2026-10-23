@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 
 /**
  * Auto-runs the screener query when the server had to fall back to mock
@@ -15,28 +15,31 @@ import { useEffect, useRef } from 'react';
  * wrong thing.
  *
  * This component re-runs the same server render (`router.refresh()`) a
- * couple of times with a widening delay. It stops as soon as the server
- * returns live data, and it gives up after a few attempts so a genuinely
- * broken feed can't loop forever.
+ * couple of times with a widening delay. The retry counter is component
+ * state rather than a ref, because a refresh that comes back still
+ * degraded would leave the props unchanged — a ref would keep the effect
+ * from firing a second time.
  */
+const MAX_ATTEMPTS = 3;
+
 export function ScreenerAutoRetry({ degraded }: { degraded: boolean }) {
   const router = useRouter();
-  const attempts = useRef(0);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!degraded) {
       // Live data came back — reset the counter so a later failure starts over.
-      attempts.current = 0;
+      setAttempt(0);
       return;
     }
-    if (attempts.current >= 3) return;
-    const delay = 800 * (attempts.current + 1);
+    if (attempt >= MAX_ATTEMPTS) return;
+    const delay = 800 * (attempt + 1);
     const timer = setTimeout(() => {
-      attempts.current += 1;
+      setAttempt((a) => a + 1);
       router.refresh();
     }, delay);
     return () => clearTimeout(timer);
-  }, [degraded, router]);
+  }, [degraded, attempt, router]);
 
   return null;
 }
